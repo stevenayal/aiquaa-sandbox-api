@@ -80,6 +80,11 @@ real contra el deploy de Vercel (ver comentarios en `.env.example`):
 - **Password**: es el password del rol Postgres (definido en `setup-db.sql`, o el de
   `postgres` reseteable en Project Settings → Database), **no** las keys `anon`/`service_role`
   de la API — esas son para el SDK/PostgREST, no sirven para conectar directo a Postgres.
+- **No le agregues `?sslmode=require` a la URL.** `lib/db.ts` ya pasa
+  `ssl: { rejectUnauthorized: false }` al Pool (y desde este commit lo sanitiza igual si se
+  cuela), pero versiones recientes de `pg-connection-string` tratan `sslmode=require` como
+  alias de `verify-full`, que gana sobre esa config y rompe con "self-signed certificate in
+  certificate chain" contra el pooler de Supabase. Confirmado con una conexión real.
 
 ### 4. Crear API keys para los alumnos
 
