@@ -7,12 +7,12 @@
   "variable": [
     {
       "key": "baseUrl",
-      "value": "http://localhost:3000",
+      "value": "https://aiquaa-sandbox-api.vercel.app",
       "type": "string"
     },
     {
       "key": "apiKey",
-      "value": "REEMPLAZA_CON_TU_API_KEY",
+      "value": "sbx_demo_f581ca21e68a347288c94d71",
       "type": "string"
     }
   ],
