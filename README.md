@@ -63,15 +63,20 @@ Completa `DATABASE_URL_READER` / `DATABASE_URL_WRITER` / `DATABASE_URL_META` con
 connection strings del **transaction pooler** de Supabase (puerto `6543`) para cada rol
 creado en el paso anterior, y las credenciales de Upstash Redis.
 
-Detalles verificados con una conexión real contra `hocryhxndegslzfiwlnx` (ver comentarios en
-`.env.example`):
+Detalles verificados con conexiones reales contra `hocryhxndegslzfiwlnx`, incluyendo un test
+real contra el deploy de Vercel (ver comentarios en `.env.example`):
 
-- **Host y username**: en este proyecto el pooler de transacciones responde en el mismo host
-  que la conexión directa (`db.<project-ref>.supabase.co`), puerto `6543`, con el **rol
-  pelado** (`qa_reader`, no `qa_reader.<project-ref>`). El formato legacy de Supavisor
-  compartido (`aws-0-<region>.pooler.supabase.com` + `<rol>.<project-ref>`) dio error
-  ("tenant/user not found") en este proyecto — si el tuyo sí usa ese esquema, sacá el host
-  exacto de Dashboard → Project Settings → Connect → "Transaction pooler".
+- **Usá siempre el pooler, nunca la conexión directa** (`db.<project-ref>.supabase.co`) en
+  producción. La conexión directa de este proyecto es **IPv6-only** (sin registro A, solo
+  AAAA) — anduvo bien en pruebas locales (entorno con salida IPv6) pero falló en Vercel con
+  `getaddrinfo ENOTFOUND`, porque las funciones serverless de Vercel no tienen salida IPv6.
+- **Host del pooler**: `aws-<N>-<region>.pooler.supabase.com` — el número de cluster (`N`) es
+  específico de cada proyecto, **no asumas que es `aws-0`**. Para este proyecto es
+  `aws-1-us-east-1`; `aws-0-us-east-1` dio "tenant/user not found". Si te pasa lo mismo, probá
+  otro número de cluster o sacá el host exacto de Dashboard → Project Settings → Connect →
+  "Transaction pooler".
+- **Username**: a través del pooler es obligatorio el sufijo `<rol>.<project-ref>` (ej.
+  `qa_reader.hocryhxndegslzfiwlnx`), no el rol pelado.
 - **Password**: es el password del rol Postgres (definido en `setup-db.sql`, o el de
   `postgres` reseteable en Project Settings → Database), **no** las keys `anon`/`service_role`
   de la API — esas son para el SDK/PostgREST, no sirven para conectar directo a Postgres.
