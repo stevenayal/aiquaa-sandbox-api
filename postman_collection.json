@@ -1,0 +1,1096 @@
+{
+  "info": {
+    "name": "aiquaa Sandbox API",
+    "description": "Colección de práctica para consumir el API sandbox del curso de Automatización de Pruebas de Software. Configura las variables `baseUrl` y `apiKey` antes de correr los requests.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000",
+      "type": "string"
+    },
+    {
+      "key": "apiKey",
+      "value": "REEMPLAZA_CON_TU_API_KEY",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "SQL - SELECT",
+      "item": [
+        {
+          "name": "Listar usuarios activos",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sql\": \"SELECT id, nombre, email FROM usuarios WHERE activo = $1\",\n  \"params\": [true]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/sql/select",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "sql",
+                "select"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Filtrar ordenes por estado",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sql\": \"SELECT id, producto, monto, estado FROM ordenes WHERE estado = $1\",\n  \"params\": [\"pagada\"]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/sql/select",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "sql",
+                "select"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Join usuarios + tickets abiertos",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sql\": \"SELECT u.nombre, t.asunto, t.prioridad FROM usuarios u JOIN tickets t ON t.usuario_id = u.id WHERE t.estado = $1\",\n  \"params\": [\"abierto\"]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/sql/select",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "sql",
+                "select"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "SQL - UPDATE",
+      "item": [
+        {
+          "name": "Cerrar un ticket por id",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sql\": \"UPDATE tickets SET estado = $1 WHERE id = $2\",\n  \"params\": [\"cerrado\", 1]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/sql/update",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "sql",
+                "update"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Marcar orden como pagada",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sql\": \"UPDATE ordenes SET estado = $1 WHERE id = $2\",\n  \"params\": [\"pagada\", 6]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/sql/update",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "sql",
+                "update"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Grupo 1 - Autenticacion (sesiones)",
+      "item": [
+        {
+          "name": "Sesiones de un usuario",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sql\": \"SELECT usuario_id, tipo_evento, exitoso, created_at FROM sesiones WHERE usuario_id = $1\",\n  \"params\": [\n    1\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/sql/select",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "sql",
+                "select"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Marcar sesion como revisada",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sql\": \"UPDATE sesiones SET exitoso = $1 WHERE id = $2\",\n  \"params\": [\n    true,\n    36\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/sql/update",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "sql",
+                "update"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Grupo 2 - Transferencias entre Cuentas",
+      "item": [
+        {
+          "name": "Cuentas de un usuario",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sql\": \"SELECT numero_cuenta, saldo, moneda FROM cuentas WHERE usuario_id = $1\",\n  \"params\": [\n    1\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/sql/select",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "sql",
+                "select"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Desactivar una cuenta",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sql\": \"UPDATE cuentas SET activa = $1 WHERE id = $2\",\n  \"params\": [\n    false,\n    3\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/sql/update",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "sql",
+                "update"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Transferencias pendientes",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sql\": \"SELECT cuenta_origen_id, cuenta_destino_id, monto FROM transferencias WHERE estado = $1\",\n  \"params\": [\n    \"pendiente\"\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/sql/select",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "sql",
+                "select"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Completar una transferencia",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sql\": \"UPDATE transferencias SET estado = $1 WHERE id = $2\",\n  \"params\": [\n    \"completada\",\n    4\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/sql/update",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "sql",
+                "update"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Grupo 3 - Pagos de Servicios",
+      "item": [
+        {
+          "name": "Facturas vencidas",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sql\": \"SELECT proveedor, monto, estado FROM facturas WHERE estado = $1\",\n  \"params\": [\n    \"vencida\"\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/sql/select",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "sql",
+                "select"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Marcar factura como pagada",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sql\": \"UPDATE facturas SET estado = $1 WHERE id = $2\",\n  \"params\": [\n    \"pagada\",\n    2\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/sql/update",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "sql",
+                "update"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Pagos fallidos",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sql\": \"SELECT factura_id, monto, metodo_pago FROM pagos WHERE estado = $1\",\n  \"params\": [\n    \"fallido\"\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/sql/select",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "sql",
+                "select"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Reintentar un pago",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sql\": \"UPDATE pagos SET estado = $1 WHERE id = $2\",\n  \"params\": [\n    \"procesado\",\n    9\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/sql/update",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "sql",
+                "update"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Grupo 4 - Onboarding / KYC (usuarios)",
+      "item": [
+        {
+          "name": "Usuarios con KYC pendiente",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sql\": \"SELECT nombre, documento_tipo, documento_numero, kyc_estado FROM usuarios WHERE kyc_estado = $1\",\n  \"params\": [\n    \"pendiente\"\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/sql/select",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "sql",
+                "select"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Verificar KYC de un usuario",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sql\": \"UPDATE usuarios SET kyc_estado = $1 WHERE id = $2\",\n  \"params\": [\n    \"verificado\",\n    4\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/sql/update",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "sql",
+                "update"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Grupo 5 - Tarjetas",
+      "item": [
+        {
+          "name": "Tarjetas de un usuario",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sql\": \"SELECT tipo, marca, estado FROM tarjetas WHERE usuario_id = $1\",\n  \"params\": [\n    1\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/sql/select",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "sql",
+                "select"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Bloquear una tarjeta",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sql\": \"UPDATE tarjetas SET estado = $1 WHERE id = $2\",\n  \"params\": [\n    \"bloqueada\",\n    2\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/sql/update",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "sql",
+                "update"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Grupo 6 - Notificaciones y Alertas",
+      "item": [
+        {
+          "name": "Notificaciones no leidas",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sql\": \"SELECT asunto, canal, leido FROM notificaciones WHERE leido = $1\",\n  \"params\": [\n    false\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/sql/select",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "sql",
+                "select"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Marcar notificacion como leida",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sql\": \"UPDATE notificaciones SET leido = $1 WHERE id = $2\",\n  \"params\": [\n    true,\n    2\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/sql/update",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "sql",
+                "update"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Grupo 7 - Carrito / Items de Orden",
+      "item": [
+        {
+          "name": "Items de una orden",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sql\": \"SELECT producto, cantidad, subtotal FROM items_orden WHERE orden_id = $1\",\n  \"params\": [\n    1\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/sql/select",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "sql",
+                "select"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Cambiar cantidad de un item",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sql\": \"UPDATE items_orden SET cantidad = $1 WHERE id = $2\",\n  \"params\": [\n    2,\n    1\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/sql/update",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "sql",
+                "update"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Grupo 8 - Reservas / Turnos",
+      "item": [
+        {
+          "name": "Reservas de un usuario",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sql\": \"SELECT servicio, fecha_hora, estado FROM reservas WHERE usuario_id = $1\",\n  \"params\": [\n    1\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/sql/select",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "sql",
+                "select"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Confirmar una reserva",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sql\": \"UPDATE reservas SET estado = $1 WHERE id = $2\",\n  \"params\": [\n    \"confirmada\",\n    1\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/sql/update",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "sql",
+                "update"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Grupo 9 - Reportes y Dashboard",
+      "item": [
+        {
+          "name": "Total de movimientos por tipo (usuario)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sql\": \"SELECT tipo_movimiento, SUM(monto) AS total FROM movimientos WHERE usuario_id = $1 GROUP BY tipo_movimiento\",\n  \"params\": [\n    1\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/sql/select",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "sql",
+                "select"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Corregir descripcion de un movimiento",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sql\": \"UPDATE movimientos SET descripcion = $1 WHERE id = $2\",\n  \"params\": [\n    \"Revisado por auditoria\",\n    1\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/sql/update",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "sql",
+                "update"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Grupo 10 - Roles y Permisos",
+      "item": [
+        {
+          "name": "Listar roles",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sql\": \"SELECT nombre, descripcion FROM roles WHERE nombre = $1\",\n  \"params\": [\n    \"soporte\"\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/sql/select",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "sql",
+                "select"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Actualizar descripcion de un rol",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sql\": \"UPDATE roles SET descripcion = $1 WHERE id = $2\",\n  \"params\": [\n    \"Rol actualizado\",\n    2\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/sql/update",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "sql",
+                "update"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Roles activos asignados",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sql\": \"SELECT usuario_id, role_id, activo FROM usuario_roles WHERE activo = $1\",\n  \"params\": [\n    true\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/sql/select",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "sql",
+                "select"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Revocar un rol asignado",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sql\": \"UPDATE usuario_roles SET activo = $1 WHERE id = $2\",\n  \"params\": [\n    false,\n    1\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/sql/update",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "sql",
+                "update"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Docs",
+      "item": [
+        {
+          "name": "OpenAPI spec (JSON)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/docs",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "docs"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
