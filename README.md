@@ -12,7 +12,7 @@ parametrizados (`$1, $2, ...`), y WHERE obligatorio en los UPDATE.
 ## Stack
 
 Next.js 14+ (App Router) · TypeScript estricto · `pg` (node-postgres) · `node-sql-parser` ·
-Zod · `@scalar/api-reference-react` · Upstash Redis (rate limiting) · Vitest.
+Zod · Scalar (docs UI, vía CDN — ver nota en `app/docs/route.ts`) · Upstash Redis (rate limiting) · Vitest.
 
 ## Setup
 

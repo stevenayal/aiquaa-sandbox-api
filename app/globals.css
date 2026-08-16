@@ -20,13 +20,18 @@ body {
   overflow-x: hidden;
 }
 
+/*
+ * No body-level display/color/background/font-family here on purpose.
+ * globals.css is imported from the root layout, so it applies to every
+ * route — including /docs, which mounts the third-party Scalar API
+ * Reference app. Scalar manages its own full-page layout (a two-column
+ * app shell), theme, and typography; a `body { display: flex; ... }` or
+ * a forced font-family here collapses its layout into a single narrow
+ * column and fights its fonts/colors. Page-specific chrome like this
+ * belongs in that page's own CSS module (see page.module.css's `.page`),
+ * scoped to that page's own wrapper element instead of the shared body.
+ */
 body {
-  min-height: 100%;
-  display: flex;
-  flex-direction: column;
-  color: var(--foreground);
-  background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
