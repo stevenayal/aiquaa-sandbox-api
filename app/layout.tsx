@@ -15,6 +15,9 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "aiquaa Sandbox API",
   description: "API sandbox para práctica de consumo de APIs REST via Postman",
+  icons: {
+    icon: "/favicon-aiquaa.png",
+  },
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
