@@ -33,6 +33,22 @@ export const openApiSpec = {
       "parametrizados ($1, $2, ...) — nunca concatenar valores directamente en el SQL.",
   },
   servers: [{ url: "/" }],
+  // Orden explícito del sidebar de Scalar: Scalar agrupa y ordena los
+  // endpoints según el orden en que los tags aparecen acá, no alfabético
+  // ni por orden de aparición en `paths`.
+  tags: [
+    { name: "SQL Sandbox", description: "Sandbox de SQL crudo (SELECT/UPDATE validado por AST), común a los 10 grupos." },
+    { name: "Grupo 1 - Autenticación y Acceso", description: "Login, logout, reset de password." },
+    { name: "Grupo 2 - Transferencias entre Cuentas", description: "Cuentas y transferencias." },
+    { name: "Grupo 3 - Pagos de Servicios", description: "Facturas y pagos." },
+    { name: "Grupo 4 - Registro de Usuario / Onboarding", description: "Alta de usuarios y verificación KYC." },
+    { name: "Grupo 5 - Tarjetas de Crédito/Débito", description: "Emisión, bloqueo y activación de tarjetas." },
+    { name: "Grupo 6 - Notificaciones y Alertas", description: "Notificaciones por canal (push/email/sms)." },
+    { name: "Grupo 7 - Carrito de Compras / E-commerce", description: "Órdenes e items de orden (checkout)." },
+    { name: "Grupo 8 - Reservas / Turnos", description: "Reservas de servicios." },
+    { name: "Grupo 9 - Reportes y Dashboard", description: "Agregados de solo lectura sobre movimientos." },
+    { name: "Grupo 10 - Roles y Permisos", description: "Roles disponibles y asignación a usuarios." },
+  ],
   components: {
     securitySchemes: {
       ApiKeyAuth: {
@@ -285,6 +301,7 @@ export const openApiSpec = {
   paths: {
     "/api/v1/sql/select": {
       post: {
+        tags: ["SQL Sandbox"],
         summary: "Ejecuta un statement SELECT",
         description:
           "Acepta exactamente un statement SELECT sobre las tablas del schema qa_training " +
@@ -328,6 +345,7 @@ export const openApiSpec = {
     },
     "/api/v1/sql/update": {
       post: {
+        tags: ["SQL Sandbox"],
         summary: "Ejecuta un statement UPDATE (requiere WHERE)",
         description:
           "Acepta exactamente un statement UPDATE con cláusula WHERE obligatoria, sobre las " +
@@ -373,6 +391,7 @@ export const openApiSpec = {
     // --- Grupo 1: Autenticación y Acceso ---
     "/api/v1/auth/login": {
       post: {
+        tags: ["Grupo 1 - Autenticación y Acceso"],
         summary: "Login (Grupo 1)",
         description:
           "Valida que el email corresponda a un usuario activo y registra un evento de " +
@@ -395,6 +414,7 @@ export const openApiSpec = {
     },
     "/api/v1/auth/logout": {
       post: {
+        tags: ["Grupo 1 - Autenticación y Acceso"],
         summary: "Logout (Grupo 1)",
         description: "Registra un evento de logout para el usuario.",
         requestBody: {
@@ -411,6 +431,7 @@ export const openApiSpec = {
     },
     "/api/v1/auth/forgot-password": {
       post: {
+        tags: ["Grupo 1 - Autenticación y Acceso"],
         summary: "Solicitar reset de password (Grupo 1)",
         requestBody: {
           required: true,
@@ -426,6 +447,7 @@ export const openApiSpec = {
     },
     "/api/v1/auth/reset-password": {
       post: {
+        tags: ["Grupo 1 - Autenticación y Acceso"],
         summary: "Completar reset de password (Grupo 1)",
         requestBody: {
           required: true,
@@ -443,6 +465,7 @@ export const openApiSpec = {
     // --- Grupo 2: Transferencias entre Cuentas ---
     "/api/v1/cuentas": {
       get: {
+        tags: ["Grupo 2 - Transferencias entre Cuentas"],
         summary: "Listar cuentas (Grupo 2)",
         parameters: [{ name: "usuarioId", in: "query", required: false, schema: { type: "integer" } }],
         responses: {
@@ -454,6 +477,7 @@ export const openApiSpec = {
     },
     "/api/v1/cuentas/{id}": {
       get: {
+        tags: ["Grupo 2 - Transferencias entre Cuentas"],
         summary: "Obtener cuenta por id (Grupo 2)",
         parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer" } }],
         responses: {
@@ -466,6 +490,7 @@ export const openApiSpec = {
     },
     "/api/v1/transferencias": {
       post: {
+        tags: ["Grupo 2 - Transferencias entre Cuentas"],
         summary: "Crear transferencia (Grupo 2)",
         description:
           "Registra la transferencia con estado 'pendiente'. No muta cuentas.saldo en esta " +
@@ -496,6 +521,7 @@ export const openApiSpec = {
     },
     "/api/v1/transferencias/{id}": {
       get: {
+        tags: ["Grupo 2 - Transferencias entre Cuentas"],
         summary: "Obtener transferencia por id (Grupo 2)",
         parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer" } }],
         responses: {
@@ -510,6 +536,7 @@ export const openApiSpec = {
     // --- Grupo 3: Pagos de Servicios ---
     "/api/v1/facturas": {
       get: {
+        tags: ["Grupo 3 - Pagos de Servicios"],
         summary: "Listar facturas (Grupo 3)",
         parameters: [
           { name: "usuarioId", in: "query", required: false, schema: { type: "integer" } },
@@ -524,6 +551,7 @@ export const openApiSpec = {
     },
     "/api/v1/facturas/{id}": {
       get: {
+        tags: ["Grupo 3 - Pagos de Servicios"],
         summary: "Obtener factura por id (Grupo 3)",
         parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer" } }],
         responses: {
@@ -536,6 +564,7 @@ export const openApiSpec = {
     },
     "/api/v1/facturas/{id}/pagar": {
       post: {
+        tags: ["Grupo 3 - Pagos de Servicios"],
         summary: "Pagar factura (Grupo 3)",
         description:
           "Transaccional: SELECT...FOR UPDATE sobre la factura, INSERT en pagos, UPDATE de " +
@@ -575,6 +604,7 @@ export const openApiSpec = {
     // --- Grupo 4: Registro de Usuario / Onboarding ---
     "/api/v1/usuarios": {
       post: {
+        tags: ["Grupo 4 - Registro de Usuario / Onboarding"],
         summary: "Crear usuario (Grupo 4)",
         description: "kyc_estado queda en 'pendiente' (default de la tabla).",
         requestBody: {
@@ -605,6 +635,7 @@ export const openApiSpec = {
     },
     "/api/v1/usuarios/{id}": {
       get: {
+        tags: ["Grupo 4 - Registro de Usuario / Onboarding"],
         summary: "Obtener usuario por id (Grupo 4)",
         parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer" } }],
         responses: {
@@ -617,6 +648,7 @@ export const openApiSpec = {
     },
     "/api/v1/usuarios/{id}/kyc": {
       patch: {
+        tags: ["Grupo 4 - Registro de Usuario / Onboarding"],
         summary: "Actualizar estado KYC (Grupo 4)",
         parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer" } }],
         requestBody: {
@@ -635,6 +667,7 @@ export const openApiSpec = {
     // --- Grupo 5: Tarjetas de Crédito/Débito ---
     "/api/v1/tarjetas": {
       get: {
+        tags: ["Grupo 5 - Tarjetas de Crédito/Débito"],
         summary: "Listar tarjetas (Grupo 5)",
         parameters: [{ name: "usuarioId", in: "query", required: false, schema: { type: "integer" } }],
         responses: {
@@ -644,6 +677,7 @@ export const openApiSpec = {
         },
       },
       post: {
+        tags: ["Grupo 5 - Tarjetas de Crédito/Débito"],
         summary: "Emitir tarjeta (Grupo 5)",
         description: "numero_enmascarado es decorativo (no hay datos reales de tarjeta en el sandbox).",
         requestBody: {
@@ -671,6 +705,7 @@ export const openApiSpec = {
     },
     "/api/v1/tarjetas/{id}/bloquear": {
       patch: {
+        tags: ["Grupo 5 - Tarjetas de Crédito/Débito"],
         summary: "Bloquear tarjeta (Grupo 5)",
         parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer" } }],
         responses: {
@@ -683,6 +718,7 @@ export const openApiSpec = {
     },
     "/api/v1/tarjetas/{id}/activar": {
       patch: {
+        tags: ["Grupo 5 - Tarjetas de Crédito/Débito"],
         summary: "Activar tarjeta (Grupo 5)",
         parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer" } }],
         responses: {
@@ -697,6 +733,7 @@ export const openApiSpec = {
     // --- Grupo 6: Notificaciones y Alertas ---
     "/api/v1/notificaciones": {
       get: {
+        tags: ["Grupo 6 - Notificaciones y Alertas"],
         summary: "Listar notificaciones (Grupo 6)",
         parameters: [
           { name: "usuarioId", in: "query", required: false, schema: { type: "integer" } },
@@ -709,6 +746,7 @@ export const openApiSpec = {
         },
       },
       post: {
+        tags: ["Grupo 6 - Notificaciones y Alertas"],
         summary: "Crear notificación (Grupo 6)",
         requestBody: {
           required: true,
@@ -736,6 +774,7 @@ export const openApiSpec = {
     },
     "/api/v1/notificaciones/{id}/leer": {
       patch: {
+        tags: ["Grupo 6 - Notificaciones y Alertas"],
         summary: "Marcar notificación como leída (Grupo 6)",
         parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer" } }],
         responses: {
@@ -750,6 +789,7 @@ export const openApiSpec = {
     // --- Grupo 7: Carrito de Compras / E-commerce ---
     "/api/v1/ordenes": {
       get: {
+        tags: ["Grupo 7 - Carrito de Compras / E-commerce"],
         summary: "Listar órdenes (Grupo 7)",
         parameters: [{ name: "usuarioId", in: "query", required: false, schema: { type: "integer" } }],
         responses: {
@@ -759,6 +799,7 @@ export const openApiSpec = {
         },
       },
       post: {
+        tags: ["Grupo 7 - Carrito de Compras / E-commerce"],
         summary: "Crear orden (checkout) (Grupo 7)",
         description:
           "Transaccional: INSERT en ordenes + N×INSERT en items_orden. monto/subtotal se " +
@@ -800,6 +841,7 @@ export const openApiSpec = {
     },
     "/api/v1/ordenes/{id}": {
       get: {
+        tags: ["Grupo 7 - Carrito de Compras / E-commerce"],
         summary: "Obtener orden por id, con items (Grupo 7)",
         parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer" } }],
         responses: {
@@ -814,6 +856,7 @@ export const openApiSpec = {
     // --- Grupo 8: Reservas / Turnos ---
     "/api/v1/reservas": {
       get: {
+        tags: ["Grupo 8 - Reservas / Turnos"],
         summary: "Listar reservas (Grupo 8)",
         parameters: [{ name: "usuarioId", in: "query", required: false, schema: { type: "integer" } }],
         responses: {
@@ -823,6 +866,7 @@ export const openApiSpec = {
         },
       },
       post: {
+        tags: ["Grupo 8 - Reservas / Turnos"],
         summary: "Crear reserva (Grupo 8)",
         requestBody: {
           required: true,
@@ -850,6 +894,7 @@ export const openApiSpec = {
     },
     "/api/v1/reservas/{id}/confirmar": {
       patch: {
+        tags: ["Grupo 8 - Reservas / Turnos"],
         summary: "Confirmar reserva (Grupo 8)",
         parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer" } }],
         responses: {
@@ -862,6 +907,7 @@ export const openApiSpec = {
     },
     "/api/v1/reservas/{id}/cancelar": {
       patch: {
+        tags: ["Grupo 8 - Reservas / Turnos"],
         summary: "Cancelar reserva (Grupo 8)",
         parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer" } }],
         responses: {
@@ -876,6 +922,7 @@ export const openApiSpec = {
     // --- Grupo 9: Reportes (agregados de solo lectura sobre movimientos) ---
     "/api/v1/reportes/movimientos": {
       get: {
+        tags: ["Grupo 9 - Reportes y Dashboard"],
         summary: "Movimientos agrupados por tipo (Grupo 9)",
         parameters: [
           { name: "usuarioId", in: "query", required: false, schema: { type: "integer" } },
@@ -891,6 +938,7 @@ export const openApiSpec = {
     },
     "/api/v1/reportes/resumen": {
       get: {
+        tags: ["Grupo 9 - Reportes y Dashboard"],
         summary: "Resumen de movimientos (Grupo 9)",
         parameters: [{ name: "usuarioId", in: "query", required: false, schema: { type: "integer" } }],
         responses: {
@@ -904,6 +952,7 @@ export const openApiSpec = {
     // --- Grupo 10: Roles y Permisos ---
     "/api/v1/roles": {
       get: {
+        tags: ["Grupo 10 - Roles y Permisos"],
         summary: "Listar roles disponibles (Grupo 10)",
         responses: {
           "200": { description: "Listado fijo de 4 roles", content: { "application/json": { schema: { type: "object", properties: { data: { type: "array", items: { $ref: "#/components/schemas/Rol" } } } } } } },
@@ -913,6 +962,7 @@ export const openApiSpec = {
     },
     "/api/v1/usuarios/{id}/roles": {
       get: {
+        tags: ["Grupo 10 - Roles y Permisos"],
         summary: "Listar roles activos de un usuario (Grupo 10)",
         parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer" } }],
         responses: {
@@ -922,6 +972,7 @@ export const openApiSpec = {
         },
       },
       post: {
+        tags: ["Grupo 10 - Roles y Permisos"],
         summary: "Asignar rol a usuario (Grupo 10)",
         description:
           "UPSERT sobre UNIQUE(usuario_id, role_id): si el rol ya estaba asignado y revocado, " +
@@ -940,6 +991,7 @@ export const openApiSpec = {
     },
     "/api/v1/usuarios/{id}/roles/{roleId}": {
       delete: {
+        tags: ["Grupo 10 - Roles y Permisos"],
         summary: "Revocar rol de usuario (Grupo 10)",
         description:
           "Soft-revoke (UPDATE activo=false): el rol qa_api no tiene GRANT de DELETE en " +
