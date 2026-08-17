@@ -1,9 +1,18 @@
+import Image from "next/image";
 import styles from "./page.module.css";
 
 export default function Home() {
   return (
     <div className={styles.page}>
       <main className={styles.main}>
+        <Image
+          src="/aiquaa-logo.png"
+          alt="aiquaa — Saber es calidad"
+          width={279}
+          height={216}
+          className={styles.logo}
+          priority
+        />
         <h1>aiquaa Sandbox API</h1>
         <p>
           API sandbox de práctica para el curso de Automatización de Pruebas de Software. Se

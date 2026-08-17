@@ -28,6 +28,21 @@
   padding: 120px 60px;
 }
 
+.logo {
+  height: 64px;
+  width: auto;
+}
+
+/* The logo art is a dark rounded badge — in dark mode .main's own
+   background is also near-black, so the badge needs a faint ring to stay
+   visually distinct instead of blending into the page. */
+@media (prefers-color-scheme: dark) {
+  .logo {
+    border-radius: 12px;
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.14);
+  }
+}
+
 .main p {
   color: var(--text-secondary);
   line-height: 1.6;
