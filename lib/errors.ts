@@ -5,6 +5,7 @@ export type ApiErrorCode =
   | "RATE_LIMITED"
   | "VALIDATION_ERROR"
   | "EXECUTION_ERROR"
+  | "NOT_FOUND"
   | "INTERNAL_ERROR";
 
 export interface ApiErrorBody {
@@ -20,6 +21,7 @@ const STATUS_BY_CODE: Record<ApiErrorCode, number> = {
   RATE_LIMITED: 429,
   VALIDATION_ERROR: 400,
   EXECUTION_ERROR: 400,
+  NOT_FOUND: 404,
   INTERNAL_ERROR: 500,
 };
 

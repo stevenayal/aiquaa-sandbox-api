@@ -227,7 +227,9 @@ CREATE TABLE IF NOT EXISTS qa_training.tickets (
 
 -- -----------------------------------------------------------------------------
 -- 2. Sandbox roles: qa_reader (SELECT-only), qa_writer (UPDATE-only),
---    app_meta (internal bookkeeping — api_keys / sql_audit_log only)
+--    qa_api (SELECT+INSERT+UPDATE, for the fixed-SQL REST endpoints only —
+--    never used by the raw-SQL sandbox), app_meta (internal bookkeeping —
+--    api_keys / sql_audit_log only)
 -- -----------------------------------------------------------------------------
 
 DO $$
@@ -244,6 +246,12 @@ END $$;
 
 DO $$
 BEGIN
+  CREATE ROLE qa_api LOGIN PASSWORD 'CHANGE_ME_API_PASSWORD';
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$
+BEGIN
   CREATE ROLE app_meta LOGIN PASSWORD 'CHANGE_ME_META_PASSWORD';
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
@@ -252,13 +260,15 @@ END $$;
 -- connection parameter set in lib/db.ts.
 ALTER ROLE qa_reader SET search_path TO qa_training;
 ALTER ROLE qa_writer SET search_path TO qa_training;
+ALTER ROLE qa_api SET search_path TO qa_training;
 
 -- Sandbox roles must not be able to see anything outside qa_training, even
 -- if the application's SQL AST whitelist ever has a gap.
 REVOKE ALL ON SCHEMA public FROM qa_reader;
 REVOKE ALL ON SCHEMA public FROM qa_writer;
+REVOKE ALL ON SCHEMA public FROM qa_api;
 
-GRANT USAGE ON SCHEMA qa_training TO qa_reader, qa_writer;
+GRANT USAGE ON SCHEMA qa_training TO qa_reader, qa_writer, qa_api;
 
 -- These two GRANT/ALTER DEFAULT PRIVILEGES pairs run after every CREATE
 -- TABLE above, so they cover all 15 qa_training tables (and any future
@@ -283,6 +293,23 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA qa_training GRANT UPDATE ON TABLES TO qa_writ
 -- before a query ever reaches this pool.
 GRANT SELECT ON ALL TABLES IN SCHEMA qa_training TO qa_writer;
 ALTER DEFAULT PRIVILEGES IN SCHEMA qa_training GRANT SELECT ON TABLES TO qa_writer;
+
+-- qa_api: SELECT+INSERT+UPDATE (still no DELETE/TRUNCATE/DDL), used
+-- exclusively by the fixed-SQL REST endpoints under app/api/v1/** (auth,
+-- cuentas, transferencias, facturas, usuarios, tarjetas, notificaciones,
+-- ordenes, reservas, reportes, roles). Those routes run SQL fixed at
+-- code-authoring time, never student-supplied — unlike qa_reader/qa_writer,
+-- which back the raw-SQL sandbox and are deliberately left exactly as
+-- restrictive as before this addition.
+GRANT SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA qa_training TO qa_api;
+ALTER DEFAULT PRIVILEGES IN SCHEMA qa_training GRANT SELECT, INSERT, UPDATE ON TABLES TO qa_api;
+
+-- Every INSERT into a bigserial PK column calls nextval() on its owned
+-- sequence — without this, every INSERT from qa_api fails with
+-- "permission denied for sequence qa_training.<table>_id_seq". Neither
+-- qa_reader nor qa_writer ever needed this since neither can INSERT.
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA qa_training TO qa_api;
+ALTER DEFAULT PRIVILEGES IN SCHEMA qa_training GRANT USAGE, SELECT ON SEQUENCES TO qa_api;
 
 -- If this Supabase project's API exposes the qa_training schema (or if
 -- you're not sure), the Postgres GRANTs above are not enough on their own
@@ -316,6 +343,13 @@ BEGIN
     EXECUTE format('DROP POLICY IF EXISTS qa_writer_all ON qa_training.%I', t);
     EXECUTE format(
       'CREATE POLICY qa_writer_all ON qa_training.%I FOR ALL TO qa_writer USING (true) WITH CHECK (true)', t
+    );
+    -- Same FOR ALL reasoning as qa_writer above: an INSERT/UPDATE role
+    -- needs a SELECT-type (or ALL-type) RLS policy too, or it sees zero
+    -- rows even with the correct table-level GRANTs.
+    EXECUTE format('DROP POLICY IF EXISTS qa_api_all ON qa_training.%I', t);
+    EXECUTE format(
+      'CREATE POLICY qa_api_all ON qa_training.%I FOR ALL TO qa_api USING (true) WITH CHECK (true)', t
     );
   END LOOP;
 END $$;
