@@ -5,9 +5,16 @@ Pruebas de Software practiquen consumo de APIs REST y obtención de datos dinám
 Postman. Se conecta a un schema aislado (`qa_training`) en Supabase Postgres, separado de
 cualquier dato de producción.
 
-Los alumnos envían SQL (`SELECT` o `UPDATE`) en el body de la request; el API valida el AST
-antes de ejecutar — un único statement, tablas dentro de `qa_training`, placeholders
-parametrizados (`$1, $2, ...`), y WHERE obligatorio en los UPDATE.
+Hay dos superficies, pensadas para objetivos distintos:
+
+- **Sandbox de SQL crudo** (`/api/v1/sql/select`, `/api/v1/sql/update`): los alumnos envían SQL
+  en el body de la request; el API valida el AST antes de ejecutar — un único statement, tablas
+  dentro de `qa_training`, placeholders parametrizados (`$1, $2, ...`), y WHERE obligatorio en
+  los UPDATE.
+- **Endpoints REST fijos, por grupo/producto** (`/api/v1/auth/login`, `/api/v1/transferencias`,
+  etc. — ver [Endpoints REST](#endpoints-rest-por-grupo)): una API REST realista, con SQL fijo
+  escrito de antemano, para que los alumnos practiquen **automatización de tests** (BDD/Gherkin)
+  contra rutas de recursos en vez de escribir SQL a mano.
 
 ## Stack
 
@@ -26,11 +33,12 @@ Vía el SQL Editor de Supabase (o `psql`), en orden:
 
 1. `scripts/setup-db.sql` — crea el schema `qa_training` con las 15 tablas (una o más por
    cada uno de los 10 grupos del curso, ver sección de tablas más abajo), los roles
-   `qa_reader` (solo SELECT), `qa_writer` (solo UPDATE+SELECT — ver nota abajo) y `app_meta`
-   (bookkeeping interno), y las tablas `api_keys` / `sql_audit_log`. **Reemplaza las
-   contraseñas `CHANGE_ME_...` antes de correrlo.** Si ya habías corrido una versión anterior
-   del script (con solo 3 tablas), corré `DROP SCHEMA IF EXISTS qa_training CASCADE;` antes de
-   re-ejecutarlo — es un sandbox sin datos de producción, y `seed-data.sql` trunca todo igual.
+   `qa_reader` (solo SELECT), `qa_writer` (solo UPDATE+SELECT — ver nota abajo), `qa_api`
+   (SELECT+INSERT+UPDATE, sin DELETE — ver nota abajo) y `app_meta` (bookkeeping interno), y
+   las tablas `api_keys` / `sql_audit_log`. **Reemplaza las contraseñas `CHANGE_ME_...` antes
+   de correrlo.** Si ya habías corrido una versión anterior del script (con solo 3 tablas),
+   corré `DROP SCHEMA IF EXISTS qa_training CASCADE;` antes de re-ejecutarlo — es un sandbox
+   sin datos de producción, y `seed-data.sql` trunca todo igual.
 2. `scripts/seed-data.sql` — datos de ejemplo determinísticos para las 15 tablas.
 
 > **Ya aplicado en el proyecto `hocryhxndegslzfiwlnx` ("aiquaa-test-management")** vía el MCP
@@ -45,6 +53,13 @@ Vía el SQL Editor de Supabase (o `psql`), en orden:
 > (equivalente a una policy de SELECT) para poder actualizarla, o ve 0 filas incluso con el
 > GRANT correcto. El GRANT de tabla (solo SELECT+UPDATE, sin INSERT/DELETE) sigue limitando
 > qué puede hacer en la práctica.
+>
+> **Nota sobre `qa_api`**: es un rol separado de `qa_reader`/`qa_writer`, usado **solo** por
+> los endpoints REST de SQL fijo (nunca por el sandbox de SQL crudo que escriben los alumnos).
+> Tiene SELECT+INSERT+UPDATE, sin DELETE (las rutas `DELETE` del API, como revocar un rol,
+> hacen soft-delete vía UPDATE). Un INSERT sobre una PK `bigserial` llama a `nextval()` sobre
+> la secuencia — sin `GRANT USAGE, SELECT ON ALL SEQUENCES ... TO qa_api` cada INSERT falla con
+> "permission denied for sequence ...", aunque el GRANT de tabla esté bien.
 
 Alternativa desde la terminal (requiere `psql` y `DATABASE_URL_ADMIN` en el entorno):
 
@@ -59,9 +74,9 @@ npm run db:seed
 cp .env.example .env.local
 ```
 
-Completa `DATABASE_URL_READER` / `DATABASE_URL_WRITER` / `DATABASE_URL_META` con las
-connection strings del **transaction pooler** de Supabase (puerto `6543`) para cada rol
-creado en el paso anterior, y las credenciales de Upstash Redis.
+Completa `DATABASE_URL_READER` / `DATABASE_URL_WRITER` / `DATABASE_URL_API` /
+`DATABASE_URL_META` con las connection strings del **transaction pooler** de Supabase (puerto
+`6543`) para cada rol creado en el paso anterior, y las credenciales de Upstash Redis.
 
 Detalles verificados con conexiones reales contra `hocryhxndegslzfiwlnx`, incluyendo un test
 real contra el deploy de Vercel (ver comentarios en `.env.example`):
@@ -152,10 +167,57 @@ requests/minuto por key.
 { "error": { "code": "VALIDATION_ERROR", "message": "..." } }
 ```
 
+## Endpoints REST por grupo
+
+Rutas REST fijas (rol `qa_api`), organizadas por recurso — pensadas para que cada grupo
+automatice tests (BDD/Gherkin) contra su propio módulo, sin escribir SQL. Todas requieren el
+header `x-api-key` y comparten el mismo límite de 30 requests/minuto por key. Body en JSON;
+query/path params se coercionan automáticamente (ej. `?usuarioId=1` → `number`).
+
+| Grupo | Módulo | Método + Ruta | Descripción |
+|---|---|---|---|
+| 1 | Autenticación y Acceso | `POST /api/v1/auth/login` | Valida email de usuario activo, registra sesión |
+| 1 | Autenticación y Acceso | `POST /api/v1/auth/logout` | Registra evento de logout |
+| 1 | Autenticación y Acceso | `POST /api/v1/auth/forgot-password` | Registra solicitud de reset |
+| 1 | Autenticación y Acceso | `POST /api/v1/auth/reset-password` | Registra reset completado |
+| 2 | Transferencias entre Cuentas | `GET /api/v1/cuentas` | Lista cuentas (`?usuarioId=`) |
+| 2 | Transferencias entre Cuentas | `GET /api/v1/cuentas/{id}` | Obtiene una cuenta |
+| 2 | Transferencias entre Cuentas | `POST /api/v1/transferencias` | Crea transferencia (`estado='pendiente'`) |
+| 2 | Transferencias entre Cuentas | `GET /api/v1/transferencias/{id}` | Obtiene una transferencia |
+| 3 | Pagos de Servicios | `GET /api/v1/facturas` | Lista facturas (`?usuarioId=&estado=`) |
+| 3 | Pagos de Servicios | `GET /api/v1/facturas/{id}` | Obtiene una factura |
+| 3 | Pagos de Servicios | `POST /api/v1/facturas/{id}/pagar` | Paga una factura (transacción: pago + estado) |
+| 4 | Registro de Usuario / Onboarding | `POST /api/v1/usuarios` | Crea usuario (`kyc_estado='pendiente'`) |
+| 4 | Registro de Usuario / Onboarding | `GET /api/v1/usuarios/{id}` | Obtiene un usuario |
+| 4 | Registro de Usuario / Onboarding | `PATCH /api/v1/usuarios/{id}/kyc` | Actualiza `kyc_estado` |
+| 5 | Tarjetas de Crédito/Débito | `GET /api/v1/tarjetas` | Lista tarjetas (`?usuarioId=`) |
+| 5 | Tarjetas de Crédito/Débito | `POST /api/v1/tarjetas` | Emite tarjeta (`estado='activa'`) |
+| 5 | Tarjetas de Crédito/Débito | `PATCH /api/v1/tarjetas/{id}/bloquear` | Bloquea tarjeta |
+| 5 | Tarjetas de Crédito/Débito | `PATCH /api/v1/tarjetas/{id}/activar` | Activa tarjeta |
+| 6 | Notificaciones y Alertas | `GET /api/v1/notificaciones` | Lista notificaciones (`?usuarioId=&leido=`) |
+| 6 | Notificaciones y Alertas | `POST /api/v1/notificaciones` | Crea notificación |
+| 6 | Notificaciones y Alertas | `PATCH /api/v1/notificaciones/{id}/leer` | Marca como leída |
+| 7 | Carrito de Compras / E-commerce | `GET /api/v1/ordenes` | Lista órdenes (`?usuarioId=`) |
+| 7 | Carrito de Compras / E-commerce | `POST /api/v1/ordenes` | Checkout (transacción: orden + items) |
+| 7 | Carrito de Compras / E-commerce | `GET /api/v1/ordenes/{id}` | Obtiene orden con items |
+| 8 | Reservas / Turnos | `GET /api/v1/reservas` | Lista reservas (`?usuarioId=`) |
+| 8 | Reservas / Turnos | `POST /api/v1/reservas` | Crea reserva (`estado='pendiente'`) |
+| 8 | Reservas / Turnos | `PATCH /api/v1/reservas/{id}/confirmar` | Confirma reserva |
+| 8 | Reservas / Turnos | `PATCH /api/v1/reservas/{id}/cancelar` | Cancela reserva |
+| 9 | Reportes y Dashboard | `GET /api/v1/reportes/movimientos` | Agregado por tipo (`?usuarioId=&desde=&hasta=`) |
+| 9 | Reportes y Dashboard | `GET /api/v1/reportes/resumen` | Resumen (count/sum/min/max) (`?usuarioId=`) |
+| 10 | Administración de Roles y Permisos | `GET /api/v1/roles` | Lista los 4 roles disponibles |
+| 10 | Administración de Roles y Permisos | `GET /api/v1/usuarios/{id}/roles` | Lista roles activos de un usuario |
+| 10 | Administración de Roles y Permisos | `POST /api/v1/usuarios/{id}/roles` | Asigna rol (upsert) |
+| 10 | Administración de Roles y Permisos | `DELETE /api/v1/usuarios/{id}/roles/{roleId}` | Revoca rol (soft-delete) |
+
+Detalle completo de cada ruta (schemas de request/response, códigos de error) en `/docs`.
+
 ## Colección Postman
 
 Importa [`postman_collection.json`](./postman_collection.json), configura las variables de
-colección `baseUrl` y `apiKey`, y corre los ejemplos de las carpetas SELECT / UPDATE / Docs.
+colección `baseUrl` y `apiKey`, y corre los ejemplos: las carpetas `Grupo N - ...` (sandbox de
+SQL crudo) y las carpetas `REST - Grupo N - ...` (endpoints REST fijos).
 
 ## Tablas de práctica (`qa_training`)
 

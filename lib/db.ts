@@ -1,8 +1,10 @@
-import { Pool } from "pg";
+import { Pool, type PoolClient } from "pg";
 import { getEnv } from "./env";
 
 declare global {
-  var __aiquaaPools: { reader?: Pool; writer?: Pool; meta?: Pool } | undefined;
+  var __aiquaaPools:
+    | { reader?: Pool; writer?: Pool; meta?: Pool; api?: Pool }
+    | undefined;
 }
 
 // Module-level singletons guarded on globalThis so Next.js dev-mode HMR
@@ -67,4 +69,41 @@ export function getMetaPool(): Pool {
     pools.meta = makePool(getEnv().DATABASE_URL_META);
   }
   return pools.meta;
+}
+
+// Used only by the fixed-SQL REST endpoints under app/api/v1/** (auth,
+// cuentas, transferencias, etc.) — never by the raw-SQL sandbox routes.
+// SELECT+INSERT+UPDATE (no DELETE) on qa_training, granted to the `qa_api`
+// role in scripts/setup-db.sql. Kept separate from qa_reader/qa_writer so
+// those two stay exactly as restrictive as the raw-SQL sandbox requires;
+// this pool's queries are all fixed at code-authoring time, never built
+// from student-supplied SQL.
+export function getQaApiPool(): Pool {
+  if (!pools.api) {
+    pools.api = makePool(getEnv().DATABASE_URL_API, "qa_training");
+  }
+  return pools.api;
+}
+
+// Runs `fn` inside a BEGIN/COMMIT (ROLLBACK on error) on a single dedicated
+// connection checked out from `pool`. Needed only for the handful of REST
+// routes that write to more than one table per request (e.g. an order plus
+// its line items) — Supabase's transaction-mode pooler is designed for
+// exactly this client-held BEGIN...COMMIT pattern.
+export async function withTransaction<T>(
+  pool: Pool,
+  fn: (client: PoolClient) => Promise<T>,
+): Promise<T> {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const result = await fn(client);
+    await client.query("COMMIT");
+    return result;
+  } catch (e) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw e;
+  } finally {
+    client.release();
+  }
 }
