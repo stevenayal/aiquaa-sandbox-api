@@ -112,20 +112,35 @@ INSERT INTO public.api_keys (api_key, label) VALUES
 
 Distribuye cada `api_key` al alumno correspondiente — la usarán en el header `x-api-key`.
 
-### 5. Instalar y correr localmente
+### 5. Sembrar el roster (opcional, para el frontend)
+
+`public.roster` mapea el email real de cada alumno a su grupo de curso (1-10) — lo usa
+`aiquaa-sandbox-web` para filtrar el menú y saludar por nombre real. Es data personal real:
+**no se commitea a este repo** (es público en GitHub), se siembra a mano una vez:
+
+```sql
+INSERT INTO public.roster (nombre, email, grupo) VALUES
+  ('Nombre Apellido', 'alumno@email.com', 1);
+```
+
+Sin filas en `roster`, `GET /api/v1/roster?email=...` devuelve `404` para cualquier email —
+el frontend cae de vuelta a mostrar los 10 módulos completos (sin filtrar), así que este paso
+es opcional.
+
+### 6. Instalar y correr localmente
 
 ```bash
 npm install
 npm run dev
 ```
 
-### 6. Tests
+### 7. Tests
 
 ```bash
 npm test
 ```
 
-### 7. Build (verificación de que está listo para Vercel)
+### 8. Build (verificación de que está listo para Vercel)
 
 ```bash
 npm run build
@@ -212,6 +227,9 @@ query/path params se coercionan automáticamente (ej. `?usuarioId=1` → `number
 | 10 | Administración de Roles y Permisos | `DELETE /api/v1/usuarios/{id}/roles/{roleId}` | Revoca rol (soft-delete) |
 
 Detalle completo de cada ruta (schemas de request/response, códigos de error) en `/docs`.
+
+Además de las 29 rutas de arriba, `GET /api/v1/roster?email=` (fuera del catálogo por grupo)
+devuelve el grupo de curso asignado a un email real de alumno — ver sección 5 más arriba.
 
 ## Colección Postman
 

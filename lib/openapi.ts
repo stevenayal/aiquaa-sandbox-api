@@ -48,6 +48,7 @@ export const openApiSpec = {
     { name: "Grupo 8 - Reservas / Turnos", description: "Reservas de servicios." },
     { name: "Grupo 9 - Reportes y Dashboard", description: "Agregados de solo lectura sobre movimientos." },
     { name: "Grupo 10 - Roles y Permisos", description: "Roles disponibles y asignación a usuarios." },
+    { name: "Roster", description: "Mapea el email real de un alumno a su grupo de curso asignado — metadata del curso, no uno de los 10 grupos pedagógicos." },
   ],
   components: {
     securitySchemes: {
@@ -293,6 +294,14 @@ export const openApiSpec = {
           total: { type: "number" },
           primero: { type: "string", format: "date-time", nullable: true },
           ultimo: { type: "string", format: "date-time", nullable: true },
+        },
+      },
+      RosterEntry: {
+        type: "object",
+        properties: {
+          nombre: { type: "string" },
+          email: { type: "string" },
+          grupo: { type: "integer", minimum: 1, maximum: 10 },
         },
       },
     },
@@ -1002,6 +1011,21 @@ export const openApiSpec = {
         ],
         responses: {
           "200": { description: "Rol revocado", content: { "application/json": { schema: { type: "object", properties: { data: { $ref: "#/components/schemas/UsuarioRol" } } } } } },
+          ...notFoundError,
+          ...validationError,
+          ...authRateLimitErrors,
+        },
+      },
+    },
+
+    // --- Roster: email real de alumno -> grupo de curso asignado ---
+    "/api/v1/roster": {
+      get: {
+        tags: ["Roster"],
+        summary: "Buscar el grupo asignado a un alumno por su email",
+        parameters: [{ name: "email", in: "query", required: true, schema: { type: "string", format: "email" } }],
+        responses: {
+          "200": { description: "Alumno encontrado", content: { "application/json": { schema: { type: "object", properties: { data: { $ref: "#/components/schemas/RosterEntry" } } } } } },
           ...notFoundError,
           ...validationError,
           ...authRateLimitErrors,

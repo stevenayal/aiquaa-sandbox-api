@@ -400,6 +400,25 @@ ALTER TABLE public.sql_audit_log ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS app_meta_all_access ON public.sql_audit_log;
 CREATE POLICY app_meta_all_access ON public.sql_audit_log FOR ALL TO app_meta USING (true) WITH CHECK (true);
 
+-- roster: mapea el email real de cada alumno a su grupo asignado (1-10),
+-- para que el frontend pueda filtrar menús y saludar por nombre real.
+-- Datos reales de personas — mismo criterio que api_keys: schema acá,
+-- nunca los INSERT con datos reales (ni en este repo ni en el frontend,
+-- ambos públicos en GitHub). Sembrar a mano vía SQL Editor.
+CREATE TABLE IF NOT EXISTS public.roster (
+  id          bigserial PRIMARY KEY,
+  nombre      text NOT NULL,
+  email       text NOT NULL UNIQUE,
+  grupo       smallint NOT NULL CHECK (grupo BETWEEN 1 AND 10),
+  created_at  timestamptz NOT NULL DEFAULT now()
+);
+
+GRANT SELECT ON public.roster TO app_meta;
+
+ALTER TABLE public.roster ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS app_meta_all_access ON public.roster;
+CREATE POLICY app_meta_all_access ON public.roster FOR ALL TO app_meta USING (true) WITH CHECK (true);
+
 -- -----------------------------------------------------------------------------
 -- 4. Seed API keys for students (example — generate one row per student,
 --    once the course roster's Nombre/Email columns are filled in).
