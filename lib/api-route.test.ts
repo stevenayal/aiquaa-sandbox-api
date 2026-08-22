@@ -12,7 +12,7 @@ vi.mock("./audit-log", () => ({
   extractClientIp: () => "127.0.0.1",
 }));
 
-const { apiRoute, notFound } = await import("./api-route");
+const { apiRoute, notFound, noContent } = await import("./api-route");
 
 function req(opts: { method?: string; url?: string; body?: unknown } = {}) {
   return new Request(opts.url ?? "http://localhost/api/v1/widgets", {
@@ -149,4 +149,46 @@ describe("apiRoute", () => {
     expect(res.status).toBe(404);
     expect(json.error.code).toBe("NOT_FOUND");
   });
+
+  it("noContent() produces a real 204 with an empty body (not the string \"null\")", async () => {
+    const handler = vi.fn().mockResolvedValue(noContent());
+    const route = apiRoute({ inputSchema: z.object({}), handler });
+
+    const res = await route(req({ method: "DELETE" }));
+    const text = await res.text();
+
+    expect(res.status).toBe(204);
+    expect(text).toBe("");
+  });
+
+  it("maps a Postgres unique_violation (23505) to 409 CONFLICT", async () => {
+    const handler = vi.fn().mockRejectedValue(
+      Object.assign(new Error("duplicate key value violates unique constraint"), {
+        code: "23505",
+      }),
+    );
+    const route = apiRoute({ inputSchema: z.object({}), handler });
+
+    const res = await route(req({ method: "POST", body: {} }));
+    const json = await res.json();
+
+    expect(res.status).toBe(409);
+    expect(json.error.code).toBe("CONFLICT");
+  });
+
+  it.each(["23503", "23514"])(
+    "maps a Postgres %s violation to 400 VALIDATION_ERROR",
+    async (pgCode) => {
+      const handler = vi.fn().mockRejectedValue(
+        Object.assign(new Error("constraint violation"), { code: pgCode }),
+      );
+      const route = apiRoute({ inputSchema: z.object({}), handler });
+
+      const res = await route(req({ method: "POST", body: {} }));
+      const json = await res.json();
+
+      expect(res.status).toBe(400);
+      expect(json.error.code).toBe("VALIDATION_ERROR");
+    },
+  );
 });

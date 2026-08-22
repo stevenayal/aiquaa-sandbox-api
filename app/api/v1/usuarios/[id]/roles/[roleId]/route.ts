@@ -2,7 +2,7 @@ export const runtime = "nodejs";
 
 import { z } from "zod";
 import { getQaApiPool } from "@/lib/db";
-import { apiRoute, notFound } from "@/lib/api-route";
+import { apiRoute, notFound, noContent } from "@/lib/api-route";
 
 const schema = z.object({
   id: z.coerce.number().int().positive(),
@@ -17,11 +17,11 @@ export const DELETE = apiRoute({
     const pool = getQaApiPool();
     const { rows } = await pool.query(
       `UPDATE usuario_roles SET activo = false
-       WHERE usuario_id = $1 AND role_id = $2
-       RETURNING *`,
+       WHERE usuario_id = $1 AND role_id = $2 AND activo = true
+       RETURNING id`,
       [id, roleId],
     );
     if (!rows[0]) return notFound("Asignación de rol no encontrada.");
-    return { body: { data: rows[0] } };
+    return noContent();
   },
 });

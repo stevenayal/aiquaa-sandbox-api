@@ -25,7 +25,7 @@ export const GET = apiRoute({
   inputSchema: getSchema,
   handler: async ({ usuarioId, leido }) => {
     const pool = getQaApiPool();
-    const conditions: string[] = [];
+    const conditions: string[] = ["activo = true"];
     const params: unknown[] = [];
     if (usuarioId !== undefined) {
       params.push(usuarioId);
@@ -35,7 +35,7 @@ export const GET = apiRoute({
       params.push(leido);
       conditions.push(`leido = $${params.length}`);
     }
-    const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+    const where = `WHERE ${conditions.join(" AND ")}`;
     const { rows } = await pool.query(
       `SELECT * FROM notificaciones ${where} ORDER BY id LIMIT 100`,
       params,

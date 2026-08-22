@@ -226,6 +226,28 @@ CREATE TABLE IF NOT EXISTS qa_training.tickets (
 );
 
 -- -----------------------------------------------------------------------------
+-- 1b. Additive migration: soft-delete column for the group tables that had
+--     no boolean/status flag usable by the new DELETE (soft-delete)
+--     endpoints and PUT/DELETE (activo=true) GET filtering. Safe to re-run;
+--     `ADD COLUMN IF NOT EXISTS` never touches existing rows/data, and every
+--     existing row defaults to activo = true (nothing disappears from GETs).
+--     usuarios.activo, cuentas.activa, and usuario_roles.activo already
+--     existed before this and are intentionally left alone. items_orden and
+--     pagos are sub-resources of ordenes/facturas, not their own group
+--     resource, so they don't get this column.
+-- -----------------------------------------------------------------------------
+
+ALTER TABLE qa_training.sesiones       ADD COLUMN IF NOT EXISTS activo boolean NOT NULL DEFAULT true;
+ALTER TABLE qa_training.transferencias ADD COLUMN IF NOT EXISTS activo boolean NOT NULL DEFAULT true;
+ALTER TABLE qa_training.facturas       ADD COLUMN IF NOT EXISTS activo boolean NOT NULL DEFAULT true;
+ALTER TABLE qa_training.tarjetas       ADD COLUMN IF NOT EXISTS activo boolean NOT NULL DEFAULT true;
+ALTER TABLE qa_training.notificaciones ADD COLUMN IF NOT EXISTS activo boolean NOT NULL DEFAULT true;
+ALTER TABLE qa_training.ordenes        ADD COLUMN IF NOT EXISTS activo boolean NOT NULL DEFAULT true;
+ALTER TABLE qa_training.reservas       ADD COLUMN IF NOT EXISTS activo boolean NOT NULL DEFAULT true;
+ALTER TABLE qa_training.movimientos    ADD COLUMN IF NOT EXISTS activo boolean NOT NULL DEFAULT true;
+ALTER TABLE qa_training.roles          ADD COLUMN IF NOT EXISTS activo boolean NOT NULL DEFAULT true;
+
+-- -----------------------------------------------------------------------------
 -- 2. Sandbox roles: qa_reader (SELECT-only), qa_writer (UPDATE-only),
 --    qa_api (SELECT+INSERT+UPDATE, for the fixed-SQL REST endpoints only —
 --    never used by the raw-SQL sandbox), app_meta (internal bookkeeping —

@@ -8,14 +8,13 @@ const getSchema = z.object({
   id: z.coerce.number().int().positive(),
 });
 
-// estado queda fuera del PUT — sigue gobernado exclusivamente por
-// POST /facturas/{id}/pagar, para no crear dos caminos que marquen 'pagada'.
+// leido y estado quedan fuera del PUT — leido sigue gobernado exclusivamente
+// por PATCH .../leer.
 const putSchema = z.object({
   id: z.coerce.number().int().positive(),
-  proveedor: z.enum(["ANDE", "ESSAP", "COPACO", "Tigo", "Personal"]),
-  numeroFactura: z.string().min(1),
-  monto: z.coerce.number().positive(),
-  fechaVencimiento: z.string().min(1),
+  canal: z.enum(["push", "email", "sms"]),
+  asunto: z.string().min(1),
+  mensaje: z.string().min(1),
 });
 
 export const GET = apiRoute({
@@ -23,26 +22,25 @@ export const GET = apiRoute({
   handler: async ({ id }) => {
     const pool = getQaApiPool();
     const { rows } = await pool.query(
-      "SELECT * FROM facturas WHERE id = $1 AND activo = true",
+      "SELECT * FROM notificaciones WHERE id = $1 AND activo = true",
       [id],
     );
-    if (!rows[0]) return notFound("Factura no encontrada.");
+    if (!rows[0]) return notFound("Notificación no encontrada.");
     return { body: { data: rows[0] } };
   },
 });
 
 export const PUT = apiRoute({
   inputSchema: putSchema,
-  handler: async ({ id, proveedor, numeroFactura, monto, fechaVencimiento }) => {
+  handler: async ({ id, canal, asunto, mensaje }) => {
     const pool = getQaApiPool();
     const { rows } = await pool.query(
-      `UPDATE facturas
-       SET proveedor = $1, numero_factura = $2, monto = $3, fecha_vencimiento = $4
-       WHERE id = $5 AND activo = true
+      `UPDATE notificaciones SET canal = $1, asunto = $2, mensaje = $3
+       WHERE id = $4 AND activo = true
        RETURNING *`,
-      [proveedor, numeroFactura, monto, fechaVencimiento, id],
+      [canal, asunto, mensaje, id],
     );
-    if (!rows[0]) return notFound("Factura no encontrada.");
+    if (!rows[0]) return notFound("Notificación no encontrada.");
     return { body: { data: rows[0] } };
   },
 });
@@ -52,10 +50,10 @@ export const DELETE = apiRoute({
   handler: async ({ id }) => {
     const pool = getQaApiPool();
     const { rows } = await pool.query(
-      "UPDATE facturas SET activo = false WHERE id = $1 AND activo = true RETURNING id",
+      "UPDATE notificaciones SET activo = false WHERE id = $1 AND activo = true RETURNING id",
       [id],
     );
-    if (!rows[0]) return notFound("Factura no encontrada.");
+    if (!rows[0]) return notFound("Notificación no encontrada.");
     return noContent();
   },
 });

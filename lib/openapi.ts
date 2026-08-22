@@ -18,6 +18,9 @@ const authRateLimitErrors = {
 
 const notFoundError = { "404": errRef("Recurso no encontrado") };
 const validationError = { "400": errRef("Body/query inválido o error de ejecución") };
+const conflictError = { "409": errRef("Conflicto: violación de una constraint unique (valor duplicado)") };
+// 204 No Content no lleva body — a diferencia de errRef(), no tiene `content`.
+const noContentResponse = { "204": { description: "Eliminado (soft-delete) — sin body" } };
 
 export const openApiSpec = {
   openapi: "3.1.0",
@@ -92,6 +95,7 @@ export const openApiSpec = {
                   "VALIDATION_ERROR",
                   "EXECUTION_ERROR",
                   "NOT_FOUND",
+                  "CONFLICT",
                   "INTERNAL_ERROR",
                 ],
               },
@@ -274,6 +278,21 @@ export const openApiSpec = {
           asignado_en: { type: "string", format: "date-time" },
           nombre: { type: "string", description: "Solo en GET (join con roles)." },
           descripcion: { type: "string", nullable: true, description: "Solo en GET (join con roles)." },
+        },
+      },
+      Movimiento: {
+        type: "object",
+        properties: {
+          id: { type: "integer" },
+          usuario_id: { type: "integer" },
+          tipo_movimiento: {
+            type: "string",
+            enum: ["transferencia", "pago_factura", "compra_ecommerce", "cargo_tarjeta"],
+          },
+          monto: { type: "number" },
+          referencia_id: { type: "integer", nullable: true },
+          descripcion: { type: "string", nullable: true },
+          created_at: { type: "string", format: "date-time" },
         },
       },
       MovimientoAgregado: {
@@ -471,6 +490,96 @@ export const openApiSpec = {
       },
     },
 
+    // --- Grupo 1 (cont.): sesiones — recurso CRUD genérico, aparte del flujo
+    // realista de /auth/login|logout|forgot-password|reset-password ---
+    "/api/v1/sesiones": {
+      get: {
+        tags: ["Grupo 1 - Autenticación y Acceso"],
+        summary: "Listar sesiones (Grupo 1)",
+        parameters: [{ name: "usuarioId", in: "query", required: false, schema: { type: "integer" } }],
+        responses: {
+          "200": { description: "Listado de sesiones", content: { "application/json": { schema: { type: "object", properties: { data: { type: "array", items: { $ref: "#/components/schemas/Sesion" } } } } } } },
+          ...validationError,
+          ...authRateLimitErrors,
+        },
+      },
+      post: {
+        tags: ["Grupo 1 - Autenticación y Acceso"],
+        summary: "Crear evento de sesión genérico (Grupo 1)",
+        description:
+          "Ejemplo didáctico de CRUD completo sobre sesiones. Para flujos realistas usar " +
+          "/auth/login, /auth/logout, etc.",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["usuarioId", "tipoEvento"],
+                properties: {
+                  usuarioId: { type: "integer" },
+                  tipoEvento: {
+                    type: "string",
+                    enum: ["login", "logout", "password_reset_solicitado", "password_reset_completado"],
+                  },
+                  exitoso: { type: "string", enum: ["true", "false"] },
+                  ip: { type: "string" },
+                  userAgent: { type: "string" },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          "201": { description: "Sesión creada", content: { "application/json": { schema: { type: "object", properties: { data: { $ref: "#/components/schemas/Sesion" } } } } } },
+          ...validationError,
+          ...authRateLimitErrors,
+        },
+      },
+    },
+    "/api/v1/sesiones/{id}": {
+      get: {
+        tags: ["Grupo 1 - Autenticación y Acceso"],
+        summary: "Obtener sesión por id (Grupo 1)",
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer" } }],
+        responses: {
+          "200": { description: "Sesión encontrada", content: { "application/json": { schema: { type: "object", properties: { data: { $ref: "#/components/schemas/Sesion" } } } } } },
+          ...notFoundError,
+          ...validationError,
+          ...authRateLimitErrors,
+        },
+      },
+      put: {
+        tags: ["Grupo 1 - Autenticación y Acceso"],
+        summary: "Reemplazar metadatos de sesión (Grupo 1)",
+        description:
+          "Un evento de sesión es esencialmente un log — usuarioId/tipoEvento/exitoso quedan " +
+          "fijos al crearse; PUT solo reemplaza ip/userAgent.",
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer" } }],
+        requestBody: {
+          required: true,
+          content: { "application/json": { schema: { type: "object", properties: { ip: { type: "string" }, userAgent: { type: "string" } } } } },
+        },
+        responses: {
+          "200": { description: "Sesión actualizada", content: { "application/json": { schema: { type: "object", properties: { data: { $ref: "#/components/schemas/Sesion" } } } } } },
+          ...notFoundError,
+          ...validationError,
+          ...authRateLimitErrors,
+        },
+      },
+      delete: {
+        tags: ["Grupo 1 - Autenticación y Acceso"],
+        summary: "Eliminar sesión (soft-delete) (Grupo 1)",
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer" } }],
+        responses: {
+          ...noContentResponse,
+          ...notFoundError,
+          ...validationError,
+          ...authRateLimitErrors,
+        },
+      },
+    },
+
     // --- Grupo 2: Transferencias entre Cuentas ---
     "/api/v1/cuentas": {
       get: {
@@ -479,6 +588,32 @@ export const openApiSpec = {
         parameters: [{ name: "usuarioId", in: "query", required: false, schema: { type: "integer" } }],
         responses: {
           "200": { description: "Listado de cuentas", content: { "application/json": { schema: { type: "object", properties: { data: { type: "array", items: { $ref: "#/components/schemas/Cuenta" } } } } } } },
+          ...validationError,
+          ...authRateLimitErrors,
+        },
+      },
+      post: {
+        tags: ["Grupo 2 - Transferencias entre Cuentas"],
+        summary: "Crear cuenta (Grupo 2)",
+        description: "numero_cuenta es decorativo (generado al azar); saldo queda en 0.",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["usuarioId", "tipoCuenta", "moneda"],
+                properties: {
+                  usuarioId: { type: "integer" },
+                  tipoCuenta: { type: "string", enum: ["ahorro", "corriente"] },
+                  moneda: { type: "string", enum: ["PYG", "USD"] },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          "201": { description: "Cuenta creada", content: { "application/json": { schema: { type: "object", properties: { data: { $ref: "#/components/schemas/Cuenta" } } } } } },
           ...validationError,
           ...authRateLimitErrors,
         },
@@ -496,8 +631,59 @@ export const openApiSpec = {
           ...authRateLimitErrors,
         },
       },
+      put: {
+        tags: ["Grupo 2 - Transferencias entre Cuentas"],
+        summary: "Reemplazar cuenta (Grupo 2)",
+        description: "numeroCuenta y saldo son inmutables vía PUT; activa sigue gobernado por DELETE.",
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer" } }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["tipoCuenta", "moneda"],
+                properties: {
+                  tipoCuenta: { type: "string", enum: ["ahorro", "corriente"] },
+                  moneda: { type: "string", enum: ["PYG", "USD"] },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          "200": { description: "Cuenta reemplazada", content: { "application/json": { schema: { type: "object", properties: { data: { $ref: "#/components/schemas/Cuenta" } } } } } },
+          ...notFoundError,
+          ...validationError,
+          ...authRateLimitErrors,
+        },
+      },
+      delete: {
+        tags: ["Grupo 2 - Transferencias entre Cuentas"],
+        summary: "Eliminar cuenta (soft-delete) (Grupo 2)",
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer" } }],
+        responses: {
+          ...noContentResponse,
+          ...notFoundError,
+          ...validationError,
+          ...authRateLimitErrors,
+        },
+      },
     },
     "/api/v1/transferencias": {
+      get: {
+        tags: ["Grupo 2 - Transferencias entre Cuentas"],
+        summary: "Listar transferencias (Grupo 2)",
+        parameters: [
+          { name: "cuentaOrigenId", in: "query", required: false, schema: { type: "integer" } },
+          { name: "cuentaDestinoId", in: "query", required: false, schema: { type: "integer" } },
+        ],
+        responses: {
+          "200": { description: "Listado de transferencias", content: { "application/json": { schema: { type: "object", properties: { data: { type: "array", items: { $ref: "#/components/schemas/Transferencia" } } } } } } },
+          ...validationError,
+          ...authRateLimitErrors,
+        },
+      },
       post: {
         tags: ["Grupo 2 - Transferencias entre Cuentas"],
         summary: "Crear transferencia (Grupo 2)",
@@ -540,6 +726,46 @@ export const openApiSpec = {
           ...authRateLimitErrors,
         },
       },
+      put: {
+        tags: ["Grupo 2 - Transferencias entre Cuentas"],
+        summary: "Reemplazar transferencia (Grupo 2)",
+        description: "estado sigue en 'pendiente' vía default; no es reemplazable por PUT.",
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer" } }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["cuentaOrigenId", "cuentaDestinoId", "monto"],
+                properties: {
+                  cuentaOrigenId: { type: "integer" },
+                  cuentaDestinoId: { type: "integer" },
+                  monto: { type: "number" },
+                  descripcion: { type: "string" },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          "200": { description: "Transferencia reemplazada", content: { "application/json": { schema: { type: "object", properties: { data: { $ref: "#/components/schemas/Transferencia" } } } } } },
+          ...notFoundError,
+          ...validationError,
+          ...authRateLimitErrors,
+        },
+      },
+      delete: {
+        tags: ["Grupo 2 - Transferencias entre Cuentas"],
+        summary: "Eliminar transferencia (soft-delete) (Grupo 2)",
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer" } }],
+        responses: {
+          ...noContentResponse,
+          ...notFoundError,
+          ...validationError,
+          ...authRateLimitErrors,
+        },
+      },
     },
 
     // --- Grupo 3: Pagos de Servicios ---
@@ -557,6 +783,35 @@ export const openApiSpec = {
           ...authRateLimitErrors,
         },
       },
+      post: {
+        tags: ["Grupo 3 - Pagos de Servicios"],
+        summary: "Crear factura (Grupo 3)",
+        description: "estado queda en 'pendiente' (default) — pasar a 'pagada' sigue siendo solo POST .../pagar.",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["usuarioId", "proveedor", "numeroFactura", "monto", "fechaVencimiento"],
+                properties: {
+                  usuarioId: { type: "integer" },
+                  proveedor: { type: "string", enum: ["ANDE", "ESSAP", "COPACO", "Tigo", "Personal"] },
+                  numeroFactura: { type: "string" },
+                  monto: { type: "number" },
+                  fechaVencimiento: { type: "string", format: "date" },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          "201": { description: "Factura creada", content: { "application/json": { schema: { type: "object", properties: { data: { $ref: "#/components/schemas/Factura" } } } } } },
+          ...validationError,
+          ...conflictError,
+          ...authRateLimitErrors,
+        },
+      },
     },
     "/api/v1/facturas/{id}": {
       get: {
@@ -565,6 +820,47 @@ export const openApiSpec = {
         parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer" } }],
         responses: {
           "200": { description: "Factura encontrada", content: { "application/json": { schema: { type: "object", properties: { data: { $ref: "#/components/schemas/Factura" } } } } } },
+          ...notFoundError,
+          ...validationError,
+          ...authRateLimitErrors,
+        },
+      },
+      put: {
+        tags: ["Grupo 3 - Pagos de Servicios"],
+        summary: "Reemplazar factura (Grupo 3)",
+        description: "estado no es reemplazable por PUT — sigue gobernado por POST .../pagar.",
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer" } }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["proveedor", "numeroFactura", "monto", "fechaVencimiento"],
+                properties: {
+                  proveedor: { type: "string", enum: ["ANDE", "ESSAP", "COPACO", "Tigo", "Personal"] },
+                  numeroFactura: { type: "string" },
+                  monto: { type: "number" },
+                  fechaVencimiento: { type: "string", format: "date" },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          "200": { description: "Factura reemplazada", content: { "application/json": { schema: { type: "object", properties: { data: { $ref: "#/components/schemas/Factura" } } } } } },
+          ...notFoundError,
+          ...validationError,
+          ...conflictError,
+          ...authRateLimitErrors,
+        },
+      },
+      delete: {
+        tags: ["Grupo 3 - Pagos de Servicios"],
+        summary: "Eliminar factura (soft-delete) (Grupo 3)",
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer" } }],
+        responses: {
+          ...noContentResponse,
           ...notFoundError,
           ...validationError,
           ...authRateLimitErrors,
@@ -612,6 +908,14 @@ export const openApiSpec = {
 
     // --- Grupo 4: Registro de Usuario / Onboarding ---
     "/api/v1/usuarios": {
+      get: {
+        tags: ["Grupo 4 - Registro de Usuario / Onboarding"],
+        summary: "Listar usuarios (Grupo 4)",
+        responses: {
+          "200": { description: "Listado de usuarios activos", content: { "application/json": { schema: { type: "object", properties: { data: { type: "array", items: { $ref: "#/components/schemas/Usuario" } } } } } } },
+          ...authRateLimitErrors,
+        },
+      },
       post: {
         tags: ["Grupo 4 - Registro de Usuario / Onboarding"],
         summary: "Crear usuario (Grupo 4)",
@@ -638,6 +942,7 @@ export const openApiSpec = {
         responses: {
           "201": { description: "Usuario creado", content: { "application/json": { schema: { type: "object", properties: { data: { $ref: "#/components/schemas/Usuario" } } } } } },
           ...validationError,
+          ...conflictError,
           ...authRateLimitErrors,
         },
       },
@@ -649,6 +954,51 @@ export const openApiSpec = {
         parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer" } }],
         responses: {
           "200": { description: "Usuario encontrado", content: { "application/json": { schema: { type: "object", properties: { data: { $ref: "#/components/schemas/Usuario" } } } } } },
+          ...notFoundError,
+          ...validationError,
+          ...authRateLimitErrors,
+        },
+      },
+      put: {
+        tags: ["Grupo 4 - Registro de Usuario / Onboarding"],
+        summary: "Reemplazar usuario (Grupo 4)",
+        description:
+          "Full-replace de los campos de negocio únicamente — kyc_estado sigue gobernado " +
+          "por PATCH .../kyc y activo por DELETE, nunca por PUT.",
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer" } }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["nombre", "email", "documentoTipo", "documentoNumero"],
+                properties: {
+                  nombre: { type: "string" },
+                  email: { type: "string", format: "email" },
+                  documentoTipo: { type: "string", enum: ["CI", "pasaporte", "RUC"] },
+                  documentoNumero: { type: "string" },
+                  fechaNacimiento: { type: "string", format: "date" },
+                  direccion: { type: "string" },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          "200": { description: "Usuario reemplazado", content: { "application/json": { schema: { type: "object", properties: { data: { $ref: "#/components/schemas/Usuario" } } } } } },
+          ...notFoundError,
+          ...validationError,
+          ...conflictError,
+          ...authRateLimitErrors,
+        },
+      },
+      delete: {
+        tags: ["Grupo 4 - Registro de Usuario / Onboarding"],
+        summary: "Eliminar usuario (soft-delete) (Grupo 4)",
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer" } }],
+        responses: {
+          ...noContentResponse,
           ...notFoundError,
           ...validationError,
           ...authRateLimitErrors,
@@ -707,6 +1057,58 @@ export const openApiSpec = {
         },
         responses: {
           "201": { description: "Tarjeta emitida", content: { "application/json": { schema: { type: "object", properties: { data: { $ref: "#/components/schemas/Tarjeta" } } } } } },
+          ...validationError,
+          ...authRateLimitErrors,
+        },
+      },
+    },
+    "/api/v1/tarjetas/{id}": {
+      get: {
+        tags: ["Grupo 5 - Tarjetas de Crédito/Débito"],
+        summary: "Obtener tarjeta por id (Grupo 5)",
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer" } }],
+        responses: {
+          "200": { description: "Tarjeta encontrada", content: { "application/json": { schema: { type: "object", properties: { data: { $ref: "#/components/schemas/Tarjeta" } } } } } },
+          ...notFoundError,
+          ...validationError,
+          ...authRateLimitErrors,
+        },
+      },
+      put: {
+        tags: ["Grupo 5 - Tarjetas de Crédito/Débito"],
+        summary: "Reemplazar tarjeta (Grupo 5)",
+        description: "numeroEnmascarado/saldoActual son server-owned; estado sigue gobernado por PATCH .../activar y .../bloquear.",
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer" } }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["tipo", "marca"],
+                properties: {
+                  tipo: { type: "string", enum: ["credito", "debito"] },
+                  marca: { type: "string", enum: ["visa", "mastercard"] },
+                  limiteCredito: { type: "number" },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          "200": { description: "Tarjeta reemplazada", content: { "application/json": { schema: { type: "object", properties: { data: { $ref: "#/components/schemas/Tarjeta" } } } } } },
+          ...notFoundError,
+          ...validationError,
+          ...authRateLimitErrors,
+        },
+      },
+      delete: {
+        tags: ["Grupo 5 - Tarjetas de Crédito/Débito"],
+        summary: "Eliminar tarjeta (soft-delete) (Grupo 5)",
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer" } }],
+        responses: {
+          ...noContentResponse,
+          ...notFoundError,
           ...validationError,
           ...authRateLimitErrors,
         },
@@ -776,6 +1178,58 @@ export const openApiSpec = {
         },
         responses: {
           "201": { description: "Notificación creada", content: { "application/json": { schema: { type: "object", properties: { data: { $ref: "#/components/schemas/Notificacion" } } } } } },
+          ...validationError,
+          ...authRateLimitErrors,
+        },
+      },
+    },
+    "/api/v1/notificaciones/{id}": {
+      get: {
+        tags: ["Grupo 6 - Notificaciones y Alertas"],
+        summary: "Obtener notificación por id (Grupo 6)",
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer" } }],
+        responses: {
+          "200": { description: "Notificación encontrada", content: { "application/json": { schema: { type: "object", properties: { data: { $ref: "#/components/schemas/Notificacion" } } } } } },
+          ...notFoundError,
+          ...validationError,
+          ...authRateLimitErrors,
+        },
+      },
+      put: {
+        tags: ["Grupo 6 - Notificaciones y Alertas"],
+        summary: "Reemplazar notificación (Grupo 6)",
+        description: "leido/estado no son reemplazables por PUT — leido sigue gobernado por PATCH .../leer.",
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer" } }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["canal", "asunto", "mensaje"],
+                properties: {
+                  canal: { type: "string", enum: ["push", "email", "sms"] },
+                  asunto: { type: "string" },
+                  mensaje: { type: "string" },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          "200": { description: "Notificación reemplazada", content: { "application/json": { schema: { type: "object", properties: { data: { $ref: "#/components/schemas/Notificacion" } } } } } },
+          ...notFoundError,
+          ...validationError,
+          ...authRateLimitErrors,
+        },
+      },
+      delete: {
+        tags: ["Grupo 6 - Notificaciones y Alertas"],
+        summary: "Eliminar notificación (soft-delete) (Grupo 6)",
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer" } }],
+        responses: {
+          ...noContentResponse,
+          ...notFoundError,
           ...validationError,
           ...authRateLimitErrors,
         },
@@ -860,6 +1314,59 @@ export const openApiSpec = {
           ...authRateLimitErrors,
         },
       },
+      put: {
+        tags: ["Grupo 7 - Carrito de Compras / E-commerce"],
+        summary: "Reemplazar orden (Grupo 7)",
+        description:
+          "Recalcula producto/monto a partir de los items enviados, igual que el POST. " +
+          "IMPORTANTE: no reemplaza las filas existentes de items_orden (qa_api no tiene " +
+          "GRANT de DELETE) — quedan como historial append-only; este PUT solo actualiza " +
+          "los campos propios de la orden.",
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer" } }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["items"],
+                properties: {
+                  items: {
+                    type: "array",
+                    minItems: 1,
+                    items: {
+                      type: "object",
+                      required: ["producto", "cantidad", "precioUnitario"],
+                      properties: {
+                        producto: { type: "string" },
+                        cantidad: { type: "integer", minimum: 1 },
+                        precioUnitario: { type: "number" },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          "200": { description: "Orden reemplazada", content: { "application/json": { schema: { type: "object", properties: { data: { $ref: "#/components/schemas/Orden" } } } } } },
+          ...notFoundError,
+          ...validationError,
+          ...authRateLimitErrors,
+        },
+      },
+      delete: {
+        tags: ["Grupo 7 - Carrito de Compras / E-commerce"],
+        summary: "Eliminar orden (soft-delete) (Grupo 7)",
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer" } }],
+        responses: {
+          ...noContentResponse,
+          ...notFoundError,
+          ...validationError,
+          ...authRateLimitErrors,
+        },
+      },
     },
 
     // --- Grupo 8: Reservas / Turnos ---
@@ -896,6 +1403,58 @@ export const openApiSpec = {
         },
         responses: {
           "201": { description: "Reserva creada", content: { "application/json": { schema: { type: "object", properties: { data: { $ref: "#/components/schemas/Reserva" } } } } } },
+          ...validationError,
+          ...authRateLimitErrors,
+        },
+      },
+    },
+    "/api/v1/reservas/{id}": {
+      get: {
+        tags: ["Grupo 8 - Reservas / Turnos"],
+        summary: "Obtener reserva por id (Grupo 8)",
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer" } }],
+        responses: {
+          "200": { description: "Reserva encontrada", content: { "application/json": { schema: { type: "object", properties: { data: { $ref: "#/components/schemas/Reserva" } } } } } },
+          ...notFoundError,
+          ...validationError,
+          ...authRateLimitErrors,
+        },
+      },
+      put: {
+        tags: ["Grupo 8 - Reservas / Turnos"],
+        summary: "Reemplazar reserva (Grupo 8)",
+        description: "estado no es reemplazable por PUT — sigue gobernado por PATCH .../confirmar y .../cancelar.",
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer" } }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["servicio", "fechaHora"],
+                properties: {
+                  servicio: { type: "string" },
+                  fechaHora: { type: "string", format: "date-time" },
+                  notas: { type: "string" },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          "200": { description: "Reserva reemplazada", content: { "application/json": { schema: { type: "object", properties: { data: { $ref: "#/components/schemas/Reserva" } } } } } },
+          ...notFoundError,
+          ...validationError,
+          ...authRateLimitErrors,
+        },
+      },
+      delete: {
+        tags: ["Grupo 8 - Reservas / Turnos"],
+        summary: "Eliminar reserva (soft-delete) (Grupo 8)",
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer" } }],
+        responses: {
+          ...noContentResponse,
+          ...notFoundError,
           ...validationError,
           ...authRateLimitErrors,
         },
@@ -958,13 +1517,191 @@ export const openApiSpec = {
       },
     },
 
+    // --- Grupo 9 (cont.): movimientos — recurso CRUD genérico sobre la
+    // misma tabla que consultan los agregados de solo lectura de arriba ---
+    "/api/v1/movimientos": {
+      get: {
+        tags: ["Grupo 9 - Reportes y Dashboard"],
+        summary: "Listar movimientos (Grupo 9)",
+        parameters: [{ name: "usuarioId", in: "query", required: false, schema: { type: "integer" } }],
+        responses: {
+          "200": { description: "Listado de movimientos", content: { "application/json": { schema: { type: "object", properties: { data: { type: "array", items: { $ref: "#/components/schemas/Movimiento" } } } } } } },
+          ...validationError,
+          ...authRateLimitErrors,
+        },
+      },
+      post: {
+        tags: ["Grupo 9 - Reportes y Dashboard"],
+        summary: "Crear movimiento (Grupo 9)",
+        description: "Ejemplo didáctico de CRUD completo sobre la tabla que /reportes/* agrega.",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["usuarioId", "tipoMovimiento", "monto"],
+                properties: {
+                  usuarioId: { type: "integer" },
+                  tipoMovimiento: {
+                    type: "string",
+                    enum: ["transferencia", "pago_factura", "compra_ecommerce", "cargo_tarjeta"],
+                  },
+                  monto: { type: "number" },
+                  referenciaId: { type: "integer" },
+                  descripcion: { type: "string" },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          "201": { description: "Movimiento creado", content: { "application/json": { schema: { type: "object", properties: { data: { $ref: "#/components/schemas/Movimiento" } } } } } },
+          ...validationError,
+          ...authRateLimitErrors,
+        },
+      },
+    },
+    "/api/v1/movimientos/{id}": {
+      get: {
+        tags: ["Grupo 9 - Reportes y Dashboard"],
+        summary: "Obtener movimiento por id (Grupo 9)",
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer" } }],
+        responses: {
+          "200": { description: "Movimiento encontrado", content: { "application/json": { schema: { type: "object", properties: { data: { $ref: "#/components/schemas/Movimiento" } } } } } },
+          ...notFoundError,
+          ...validationError,
+          ...authRateLimitErrors,
+        },
+      },
+      put: {
+        tags: ["Grupo 9 - Reportes y Dashboard"],
+        summary: "Reemplazar movimiento (Grupo 9)",
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer" } }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["tipoMovimiento", "monto"],
+                properties: {
+                  tipoMovimiento: {
+                    type: "string",
+                    enum: ["transferencia", "pago_factura", "compra_ecommerce", "cargo_tarjeta"],
+                  },
+                  monto: { type: "number" },
+                  referenciaId: { type: "integer" },
+                  descripcion: { type: "string" },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          "200": { description: "Movimiento reemplazado", content: { "application/json": { schema: { type: "object", properties: { data: { $ref: "#/components/schemas/Movimiento" } } } } } },
+          ...notFoundError,
+          ...validationError,
+          ...authRateLimitErrors,
+        },
+      },
+      delete: {
+        tags: ["Grupo 9 - Reportes y Dashboard"],
+        summary: "Eliminar movimiento (soft-delete) (Grupo 9)",
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer" } }],
+        responses: {
+          ...noContentResponse,
+          ...notFoundError,
+          ...validationError,
+          ...authRateLimitErrors,
+        },
+      },
+    },
+
     // --- Grupo 10: Roles y Permisos ---
     "/api/v1/roles": {
       get: {
         tags: ["Grupo 10 - Roles y Permisos"],
         summary: "Listar roles disponibles (Grupo 10)",
         responses: {
-          "200": { description: "Listado fijo de 4 roles", content: { "application/json": { schema: { type: "object", properties: { data: { type: "array", items: { $ref: "#/components/schemas/Rol" } } } } } } },
+          "200": { description: "Listado de roles activos", content: { "application/json": { schema: { type: "object", properties: { data: { type: "array", items: { $ref: "#/components/schemas/Rol" } } } } } } },
+          ...authRateLimitErrors,
+        },
+      },
+      post: {
+        tags: ["Grupo 10 - Roles y Permisos"],
+        summary: "Crear rol (Grupo 10)",
+        description: "nombre es un CHECK cerrado a 4 valores — duplicar uno existente devuelve 409.",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["nombre"],
+                properties: {
+                  nombre: { type: "string", enum: ["admin", "soporte", "auditor", "operador"] },
+                  descripcion: { type: "string" },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          "201": { description: "Rol creado", content: { "application/json": { schema: { type: "object", properties: { data: { $ref: "#/components/schemas/Rol" } } } } } },
+          ...validationError,
+          ...conflictError,
+          ...authRateLimitErrors,
+        },
+      },
+    },
+    "/api/v1/roles/{id}": {
+      get: {
+        tags: ["Grupo 10 - Roles y Permisos"],
+        summary: "Obtener rol por id (Grupo 10)",
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer" } }],
+        responses: {
+          "200": { description: "Rol encontrado", content: { "application/json": { schema: { type: "object", properties: { data: { $ref: "#/components/schemas/Rol" } } } } } },
+          ...notFoundError,
+          ...validationError,
+          ...authRateLimitErrors,
+        },
+      },
+      put: {
+        tags: ["Grupo 10 - Roles y Permisos"],
+        summary: "Reemplazar rol (Grupo 10)",
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer" } }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["nombre"],
+                properties: {
+                  nombre: { type: "string", enum: ["admin", "soporte", "auditor", "operador"] },
+                  descripcion: { type: "string" },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          "200": { description: "Rol reemplazado", content: { "application/json": { schema: { type: "object", properties: { data: { $ref: "#/components/schemas/Rol" } } } } } },
+          ...notFoundError,
+          ...validationError,
+          ...conflictError,
+          ...authRateLimitErrors,
+        },
+      },
+      delete: {
+        tags: ["Grupo 10 - Roles y Permisos"],
+        summary: "Eliminar rol (soft-delete) (Grupo 10)",
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer" } }],
+        responses: {
+          ...noContentResponse,
+          ...notFoundError,
+          ...validationError,
           ...authRateLimitErrors,
         },
       },
@@ -985,14 +1722,16 @@ export const openApiSpec = {
         summary: "Asignar rol a usuario (Grupo 10)",
         description:
           "UPSERT sobre UNIQUE(usuario_id, role_id): si el rol ya estaba asignado y revocado, " +
-          "lo reactiva en vez de fallar por la constraint.",
+          "lo reactiva en vez de fallar por la constraint. 201 si se creó la asignación por " +
+          "primera vez, 200 si el upsert reactivó una fila existente.",
         parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer" } }],
         requestBody: {
           required: true,
           content: { "application/json": { schema: { type: "object", required: ["roleId"], properties: { roleId: { type: "integer" } } } } },
         },
         responses: {
-          "201": { description: "Rol asignado", content: { "application/json": { schema: { type: "object", properties: { data: { $ref: "#/components/schemas/UsuarioRol" } } } } } },
+          "201": { description: "Rol asignado por primera vez", content: { "application/json": { schema: { type: "object", properties: { data: { $ref: "#/components/schemas/UsuarioRol" } } } } } },
+          "200": { description: "Rol reactivado (ya existía, estaba revocado)", content: { "application/json": { schema: { type: "object", properties: { data: { $ref: "#/components/schemas/UsuarioRol" } } } } } },
           ...validationError,
           ...authRateLimitErrors,
         },
@@ -1010,7 +1749,7 @@ export const openApiSpec = {
           { name: "roleId", in: "path", required: true, schema: { type: "integer" } },
         ],
         responses: {
-          "200": { description: "Rol revocado", content: { "application/json": { schema: { type: "object", properties: { data: { $ref: "#/components/schemas/UsuarioRol" } } } } } },
+          ...noContentResponse,
           ...notFoundError,
           ...validationError,
           ...authRateLimitErrors,

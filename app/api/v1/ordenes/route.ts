@@ -24,8 +24,11 @@ export const GET = apiRoute({
   handler: async ({ usuarioId }) => {
     const pool = getQaApiPool();
     const { rows } = usuarioId
-      ? await pool.query("SELECT * FROM ordenes WHERE usuario_id = $1 ORDER BY id", [usuarioId])
-      : await pool.query("SELECT * FROM ordenes ORDER BY id LIMIT 100");
+      ? await pool.query(
+          "SELECT * FROM ordenes WHERE usuario_id = $1 AND activo = true ORDER BY id",
+          [usuarioId],
+        )
+      : await pool.query("SELECT * FROM ordenes WHERE activo = true ORDER BY id LIMIT 100");
     return { body: { data: rows } };
   },
 });
