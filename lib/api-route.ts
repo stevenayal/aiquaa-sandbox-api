@@ -34,6 +34,13 @@ export function notFound(message: string): ApiRouteResult {
   return { status: 404, body: { error: { code: "NOT_FOUND", message } } };
 }
 
+// Convenience for a successful DELETE (soft-delete) — RFC 7231 says 204
+// carries no body, so ApiRouteResult.body is ignored for status 204 in the
+// success path below.
+export function noContent(): ApiRouteResult {
+  return { status: 204, body: null };
+}
+
 // Shared pipeline for the fixed-SQL REST endpoints under app/api/v1/**
 // (auth, cuentas, transferencias, facturas, usuarios, tarjetas,
 // notificaciones, ordenes, reservas, reportes, roles). Mirrors
@@ -103,6 +110,11 @@ export function apiRoute<TInput>(options: ApiRouteOptions<TInput>) {
         success: true,
         ip,
       });
+      // A 204 must carry no body at all — NextResponse.json(null, ...) would
+      // still send the 4-byte string "null" as the body.
+      if (result.status === 204) {
+        return new NextResponse(null, { status: 204 });
+      }
       return NextResponse.json(result.body, { status: result.status ?? 200 });
     } catch (e) {
       const message = (e as Error).message;
@@ -114,6 +126,17 @@ export function apiRoute<TInput>(options: ApiRouteOptions<TInput>) {
         error: message,
         ip,
       });
+      // node-postgres attaches the Postgres SQLSTATE as `.code` on thrown
+      // errors — map the ones a Zod schema can't catch (they only surface
+      // once the query hits the DB) to the correct RFC 7231 status instead
+      // of the generic EXECUTION_ERROR/400 fallback.
+      const pgCode = (e as { code?: string }).code;
+      if (pgCode === "23505") {
+        return errorResponse("CONFLICT", message);
+      }
+      if (pgCode === "23503" || pgCode === "23514") {
+        return errorResponse("VALIDATION_ERROR", message);
+      }
       return errorResponse("EXECUTION_ERROR", message);
     }
   };

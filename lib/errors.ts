@@ -6,6 +6,7 @@ export type ApiErrorCode =
   | "VALIDATION_ERROR"
   | "EXECUTION_ERROR"
   | "NOT_FOUND"
+  | "CONFLICT"
   | "INTERNAL_ERROR";
 
 export interface ApiErrorBody {
@@ -22,6 +23,7 @@ const STATUS_BY_CODE: Record<ApiErrorCode, number> = {
   VALIDATION_ERROR: 400,
   EXECUTION_ERROR: 400,
   NOT_FOUND: 404,
+  CONFLICT: 409,
   INTERNAL_ERROR: 500,
 };
 

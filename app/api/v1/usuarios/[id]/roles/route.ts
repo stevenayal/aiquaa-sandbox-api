@@ -32,6 +32,11 @@ export const GET = apiRoute({
 // UPSERT, no INSERT bare: usuario_roles tiene UNIQUE(usuario_id, role_id),
 // así que un alumno que revoca un rol (DELETE, activo=false) y lo vuelve a
 // asignar necesita reactivar la fila existente, no chocar con la unique.
+// `xmax = 0` es el truco estándar de Postgres para distinguir, en el
+// RETURNING de un INSERT ... ON CONFLICT DO UPDATE, si la fila se insertó
+// (xmax = 0) o se actualizó (xmax != 0) — así el status code respeta RFC
+// 7231: 201 solo cuando de verdad se creó un recurso nuevo, 200 cuando el
+// upsert reactivó uno existente.
 export const POST = apiRoute({
   inputSchema: postSchema,
   handler: async ({ id, roleId }) => {
@@ -40,9 +45,10 @@ export const POST = apiRoute({
       `INSERT INTO usuario_roles (usuario_id, role_id, activo)
        VALUES ($1, $2, true)
        ON CONFLICT (usuario_id, role_id) DO UPDATE SET activo = true
-       RETURNING *`,
+       RETURNING *, (xmax = 0) AS inserted`,
       [id, roleId],
     );
-    return { status: 201, body: { data: rows[0] } };
+    const { inserted, ...row } = rows[0];
+    return { status: inserted ? 201 : 200, body: { data: row } };
   },
 });

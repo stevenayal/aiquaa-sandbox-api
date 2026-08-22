@@ -60,6 +60,16 @@ Vía el SQL Editor de Supabase (o `psql`), en orden:
 > hacen soft-delete vía UPDATE). Un INSERT sobre una PK `bigserial` llama a `nextval()` sobre
 > la secuencia — sin `GRANT USAGE, SELECT ON ALL SEQUENCES ... TO qa_api` cada INSERT falla con
 > "permission denied for sequence ...", aunque el GRANT de tabla esté bien.
+>
+> **Migración aditiva (columna `activo`)**: `setup-db.sql` agrega, vía
+> `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`, una columna `activo boolean NOT NULL DEFAULT
+> true` a `sesiones`, `transferencias`, `facturas`, `tarjetas`, `notificaciones`, `ordenes`,
+> `reservas`, `movimientos` y `roles` — las tablas que no tenían ya un flag de soft-delete
+> (`usuarios.activo`, `cuentas.activa` y `usuario_roles.activo` son anteriores y no cambian).
+> Habilita el `DELETE` (soft-delete) y el filtrado `activo=true` en `GET` de cada grupo. Es
+> segura de re-correr y no borra datos, pero **hay que volver a correr `setup-db.sql` contra
+> el proyecto Supabase ya desplegado** (`hocryhxndegslzfiwlnx`) para que estos endpoints
+> nuevos funcionen ahí.
 
 Alternativa desde la terminal (requiere `psql` y `DATABASE_URL_ADMIN` en el entorno):
 
@@ -189,47 +199,59 @@ automatice tests (BDD/Gherkin) contra su propio módulo, sin escribir SQL. Todas
 header `x-api-key` y comparten el mismo límite de 30 requests/minuto por key. Body en JSON;
 query/path params se coercionan automáticamente (ej. `?usuarioId=1` → `number`).
 
+Cada grupo expone ahora un ejemplo completo de **GET (lista + por id) / POST / PUT / DELETE**
+sobre su recurso principal, además de las rutas de acción específicas (login, pagar, bloquear,
+confirmar, etc.) que ya existían. `PUT` reemplaza únicamente los campos de negocio — nunca
+campos de identidad/ownership (`id`, `usuarioId`, `created_at`, claves naturales únicas) ni de
+ciclo de vida (`estado`, `activo`/`activa`, `leido`), que siguen gobernados por los PATCH de
+acción y por `DELETE`. `DELETE` es siempre soft-delete (`UPDATE activo=false`, nunca un DELETE
+real — ver nota de `qa_api` más arriba) y devuelve `204 No Content`.
+
 | Grupo | Módulo | Método + Ruta | Descripción |
 |---|---|---|---|
 | 1 | Autenticación y Acceso | `POST /api/v1/auth/login` | Valida email de usuario activo, registra sesión |
 | 1 | Autenticación y Acceso | `POST /api/v1/auth/logout` | Registra evento de logout |
 | 1 | Autenticación y Acceso | `POST /api/v1/auth/forgot-password` | Registra solicitud de reset |
 | 1 | Autenticación y Acceso | `POST /api/v1/auth/reset-password` | Registra reset completado |
-| 2 | Transferencias entre Cuentas | `GET /api/v1/cuentas` | Lista cuentas (`?usuarioId=`) |
-| 2 | Transferencias entre Cuentas | `GET /api/v1/cuentas/{id}` | Obtiene una cuenta |
-| 2 | Transferencias entre Cuentas | `POST /api/v1/transferencias` | Crea transferencia (`estado='pendiente'`) |
-| 2 | Transferencias entre Cuentas | `GET /api/v1/transferencias/{id}` | Obtiene una transferencia |
-| 3 | Pagos de Servicios | `GET /api/v1/facturas` | Lista facturas (`?usuarioId=&estado=`) |
-| 3 | Pagos de Servicios | `GET /api/v1/facturas/{id}` | Obtiene una factura |
+| 1 | Autenticación y Acceso | `GET/POST /api/v1/usuarios`, `GET/PUT/DELETE /api/v1/usuarios/{id}` | CRUD de usuarios |
+| 1 | Autenticación y Acceso | `GET/POST /api/v1/sesiones`, `GET/PUT/DELETE /api/v1/sesiones/{id}` | CRUD genérico de eventos de sesión (ejemplo didáctico, aparte del flujo de login/logout de arriba) |
+| 2 | Transferencias entre Cuentas | `GET/POST /api/v1/cuentas`, `GET/PUT/DELETE /api/v1/cuentas/{id}` | CRUD de cuentas |
+| 2 | Transferencias entre Cuentas | `GET/POST /api/v1/transferencias`, `GET/PUT/DELETE /api/v1/transferencias/{id}` | CRUD de transferencias (`estado='pendiente'` al crear, no muta `cuentas.saldo`) |
+| 3 | Pagos de Servicios | `GET/POST /api/v1/facturas`, `GET/PUT/DELETE /api/v1/facturas/{id}` | CRUD de facturas |
 | 3 | Pagos de Servicios | `POST /api/v1/facturas/{id}/pagar` | Paga una factura (transacción: pago + estado) |
-| 4 | Registro de Usuario / Onboarding | `POST /api/v1/usuarios` | Crea usuario (`kyc_estado='pendiente'`) |
-| 4 | Registro de Usuario / Onboarding | `GET /api/v1/usuarios/{id}` | Obtiene un usuario |
-| 4 | Registro de Usuario / Onboarding | `PATCH /api/v1/usuarios/{id}/kyc` | Actualiza `kyc_estado` |
-| 5 | Tarjetas de Crédito/Débito | `GET /api/v1/tarjetas` | Lista tarjetas (`?usuarioId=`) |
-| 5 | Tarjetas de Crédito/Débito | `POST /api/v1/tarjetas` | Emite tarjeta (`estado='activa'`) |
-| 5 | Tarjetas de Crédito/Débito | `PATCH /api/v1/tarjetas/{id}/bloquear` | Bloquea tarjeta |
-| 5 | Tarjetas de Crédito/Débito | `PATCH /api/v1/tarjetas/{id}/activar` | Activa tarjeta |
-| 6 | Notificaciones y Alertas | `GET /api/v1/notificaciones` | Lista notificaciones (`?usuarioId=&leido=`) |
-| 6 | Notificaciones y Alertas | `POST /api/v1/notificaciones` | Crea notificación |
+| 4 | Registro de Usuario / Onboarding | `PATCH /api/v1/usuarios/{id}/kyc` | Actualiza `kyc_estado` (usuarios comparte CRUD con el Grupo 1) |
+| 5 | Tarjetas de Crédito/Débito | `GET/POST /api/v1/tarjetas`, `GET/PUT/DELETE /api/v1/tarjetas/{id}` | CRUD de tarjetas |
+| 5 | Tarjetas de Crédito/Débito | `PATCH /api/v1/tarjetas/{id}/bloquear`, `PATCH /api/v1/tarjetas/{id}/activar` | Bloquea / activa tarjeta |
+| 6 | Notificaciones y Alertas | `GET/POST /api/v1/notificaciones`, `GET/PUT/DELETE /api/v1/notificaciones/{id}` | CRUD de notificaciones |
 | 6 | Notificaciones y Alertas | `PATCH /api/v1/notificaciones/{id}/leer` | Marca como leída |
-| 7 | Carrito de Compras / E-commerce | `GET /api/v1/ordenes` | Lista órdenes (`?usuarioId=`) |
-| 7 | Carrito de Compras / E-commerce | `POST /api/v1/ordenes` | Checkout (transacción: orden + items) |
-| 7 | Carrito de Compras / E-commerce | `GET /api/v1/ordenes/{id}` | Obtiene orden con items |
-| 8 | Reservas / Turnos | `GET /api/v1/reservas` | Lista reservas (`?usuarioId=`) |
-| 8 | Reservas / Turnos | `POST /api/v1/reservas` | Crea reserva (`estado='pendiente'`) |
-| 8 | Reservas / Turnos | `PATCH /api/v1/reservas/{id}/confirmar` | Confirma reserva |
-| 8 | Reservas / Turnos | `PATCH /api/v1/reservas/{id}/cancelar` | Cancela reserva |
-| 9 | Reportes y Dashboard | `GET /api/v1/reportes/movimientos` | Agregado por tipo (`?usuarioId=&desde=&hasta=`) |
-| 9 | Reportes y Dashboard | `GET /api/v1/reportes/resumen` | Resumen (count/sum/min/max) (`?usuarioId=`) |
-| 10 | Administración de Roles y Permisos | `GET /api/v1/roles` | Lista los 4 roles disponibles |
-| 10 | Administración de Roles y Permisos | `GET /api/v1/usuarios/{id}/roles` | Lista roles activos de un usuario |
-| 10 | Administración de Roles y Permisos | `POST /api/v1/usuarios/{id}/roles` | Asigna rol (upsert) |
-| 10 | Administración de Roles y Permisos | `DELETE /api/v1/usuarios/{id}/roles/{roleId}` | Revoca rol (soft-delete) |
+| 7 | Carrito de Compras / E-commerce | `GET/POST /api/v1/ordenes`, `GET/PUT/DELETE /api/v1/ordenes/{id}` | CRUD de órdenes (checkout transaccional; PUT recalcula `producto`/`monto` pero no reemplaza `items_orden` — sin GRANT de DELETE, ver `/docs`) |
+| 8 | Reservas / Turnos | `GET/POST /api/v1/reservas`, `GET/PUT/DELETE /api/v1/reservas/{id}` | CRUD de reservas |
+| 8 | Reservas / Turnos | `PATCH /api/v1/reservas/{id}/confirmar`, `PATCH /api/v1/reservas/{id}/cancelar` | Confirma / cancela reserva |
+| 9 | Reportes y Dashboard | `GET /api/v1/reportes/movimientos`, `GET /api/v1/reportes/resumen` | Agregados de solo lectura (`?usuarioId=&desde=&hasta=`) |
+| 9 | Reportes y Dashboard | `GET/POST /api/v1/movimientos`, `GET/PUT/DELETE /api/v1/movimientos/{id}` | CRUD genérico sobre la tabla que agregan los reportes de arriba |
+| 10 | Administración de Roles y Permisos | `GET/POST /api/v1/roles`, `GET/PUT/DELETE /api/v1/roles/{id}` | CRUD de roles (4 valores fijos vía CHECK) |
+| 10 | Administración de Roles y Permisos | `GET/POST /api/v1/usuarios/{id}/roles` | Lista / asigna rol a usuario (POST es upsert: 201 si crea, 200 si reactiva) |
+| 10 | Administración de Roles y Permisos | `DELETE /api/v1/usuarios/{id}/roles/{roleId}` | Revoca rol (soft-delete, `204`) |
 
 Detalle completo de cada ruta (schemas de request/response, códigos de error) en `/docs`.
 
-Además de las 29 rutas de arriba, `GET /api/v1/roster?email=` (fuera del catálogo por grupo)
+Además de las rutas de arriba, `GET /api/v1/roster?email=` (fuera del catálogo por grupo)
 devuelve el grupo de curso asignado a un email real de alumno — ver sección 5 más arriba.
+
+### Códigos de respuesta (RFC 7231)
+
+| Status | Cuándo |
+|---|---|
+| `200 OK` | GET, PUT o PATCH exitoso; POST de upsert que actualizó una fila existente |
+| `201 Created` | POST que crea una fila nueva |
+| `204 No Content` | DELETE exitoso (soft-delete) — sin body |
+| `400 Bad Request` | Campo requerido faltante/vacío o inválido (`VALIDATION_ERROR`); también violación de FK o CHECK en Postgres |
+| `401 Unauthorized` | API key ausente, inválida o inactiva |
+| `404 Not Found` | Recurso inexistente o ya soft-eliminado (`activo=false`) |
+| `405 Method Not Allowed` | Verbo HTTP no soportado por la ruta (automático de Next.js, ninguna ruta lo devuelve a mano) |
+| `409 Conflict` | Violación de constraint unique en Postgres (ej. `numeroFactura`/`email`/`nombre` duplicado) |
+| `429 Too Many Requests` | Límite de 30 requests/minuto excedido |
+| `500 Internal Server Error` | Error inesperado (falla de autenticación/infra) |
 
 ## Colección Postman
 
@@ -246,17 +268,21 @@ pueden consultar las 15 vía los mismos roles `qa_reader`/`qa_writer`.
 | Tabla | Columnas | Grupo(s) |
 |---|---|---|
 | `usuarios` | `id, nombre, email, activo, documento_tipo, documento_numero, fecha_nacimiento, direccion, kyc_estado, created_at` | 1 (Auth) y 4 (Onboarding/KYC) |
-| `sesiones` | `id, usuario_id, tipo_evento, exitoso, ip, user_agent, created_at` | 1 (Autenticación y Acceso) |
+| `sesiones` | `id, usuario_id, tipo_evento, exitoso, ip, user_agent, created_at, activo` | 1 (Autenticación y Acceso) |
 | `cuentas` | `id, usuario_id, numero_cuenta, tipo_cuenta, moneda, saldo, activa, created_at` | 2 (Transferencias entre Cuentas) |
-| `transferencias` | `id, cuenta_origen_id, cuenta_destino_id, monto, descripcion, estado, created_at` | 2 (Transferencias entre Cuentas) |
-| `facturas` | `id, usuario_id, proveedor, numero_factura, monto, fecha_vencimiento, estado, created_at` | 3 (Pagos de Servicios) |
+| `transferencias` | `id, cuenta_origen_id, cuenta_destino_id, monto, descripcion, estado, created_at, activo` | 2 (Transferencias entre Cuentas) |
+| `facturas` | `id, usuario_id, proveedor, numero_factura, monto, fecha_vencimiento, estado, created_at, activo` | 3 (Pagos de Servicios) |
 | `pagos` | `id, factura_id, usuario_id, monto, metodo_pago, estado, created_at` | 3 (Pagos de Servicios) |
-| `tarjetas` | `id, usuario_id, tipo, marca, numero_enmascarado, limite_credito, saldo_actual, estado, created_at` | 5 (Tarjetas de Crédito/Débito) |
-| `notificaciones` | `id, usuario_id, canal, asunto, mensaje, leido, estado, created_at` | 6 (Notificaciones y Alertas) |
-| `ordenes` | `id, usuario_id, producto, monto, estado, created_at` | 7 (Carrito de Compras / E-commerce) |
+| `tarjetas` | `id, usuario_id, tipo, marca, numero_enmascarado, limite_credito, saldo_actual, estado, created_at, activo` | 5 (Tarjetas de Crédito/Débito) |
+| `notificaciones` | `id, usuario_id, canal, asunto, mensaje, leido, estado, created_at, activo` | 6 (Notificaciones y Alertas) |
+| `ordenes` | `id, usuario_id, producto, monto, estado, created_at, activo` | 7 (Carrito de Compras / E-commerce) |
 | `items_orden` | `id, orden_id, producto, cantidad, precio_unitario, subtotal, created_at` | 7 (Carrito de Compras / E-commerce) |
-| `reservas` | `id, usuario_id, servicio, fecha_hora, estado, notas, created_at` | 8 (Reservas / Turnos) |
-| `movimientos` | `id, usuario_id, tipo_movimiento, monto, referencia_id, descripcion, created_at` | 9 (Reportes y Dashboard — agregaciones) |
-| `roles` | `id, nombre, descripcion, created_at` | 10 (Administración de Roles y Permisos) |
+| `reservas` | `id, usuario_id, servicio, fecha_hora, estado, notas, created_at, activo` | 8 (Reservas / Turnos) |
+| `movimientos` | `id, usuario_id, tipo_movimiento, monto, referencia_id, descripcion, created_at, activo` | 9 (Reportes y Dashboard — agregaciones, y ahora también CRUD directo) |
+| `roles` | `id, nombre, descripcion, created_at, activo` | 10 (Administración de Roles y Permisos) |
 | `usuario_roles` | `id, usuario_id, role_id, activo, asignado_en` | 10 (Administración de Roles y Permisos) |
 | `tickets` | `id, usuario_id, orden_id, asunto, estado, prioridad, created_at` | Soporte general, sin grupo asignado |
+
+Las columnas `activo`/`activa` marcadas arriba son las que agrega la migración aditiva
+descrita en el paso 2 — filtran qué filas devuelven los `GET` y sostienen los nuevos `DELETE`
+(soft-delete) de cada grupo.
