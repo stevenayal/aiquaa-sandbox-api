@@ -10,8 +10,11 @@ export const grupo = {
     "Disponibilidad de agenda, duración del turno, control de solapamientos, recursos o profesionales asignados, recordatorios y reprogramación: la reserva es un registro libre sobre una fecha declarada.",
 
   endpoints: [
-    { ruta: "GET /api/v1/reservas", rf: "RF-G8-01", desc: "Lista reservas, opcionalmente filtradas por titular." },
+    { ruta: "GET /api/v1/reservas", rf: "RF-G8-01", desc: "Lista reservas activas, opcionalmente filtradas por titular." },
     { ruta: "POST /api/v1/reservas", rf: "RF-G8-02", desc: "Crea una reserva en estado pendiente." },
+    { ruta: "GET /api/v1/reservas/{id}", rf: "RF-G8-05", desc: "Devuelve el detalle de una reserva." },
+    { ruta: "PUT /api/v1/reservas/{id}", rf: "RF-G8-06", desc: "Reemplaza servicio, fecha/hora y notas de una reserva." },
+    { ruta: "DELETE /api/v1/reservas/{id}", rf: "RF-G8-07", desc: "Da de baja (soft-delete) una reserva." },
     { ruta: "PATCH /api/v1/reservas/{id}/confirmar", rf: "RF-G8-03", desc: "Confirma una reserva." },
     { ruta: "PATCH /api/v1/reservas/{id}/cancelar", rf: "RF-G8-04", desc: "Cancela una reserva." },
   ],
@@ -36,6 +39,7 @@ export const grupo = {
         ],
         ["`notas`", "`text`, opcional"],
         ["`created_at`", "`timestamptz`, por defecto `now()`"],
+        ["`activo`", "`boolean`, obligatorio, por defecto `true`; lo usan `GET`/`PUT`/`DELETE` para filtrar/operar"],
       ],
     },
   ],
@@ -52,9 +56,10 @@ export const grupo = {
         "Devuelve las reservas del sandbox, con la posibilidad de acotar el resultado a un titular determinado. Es la agenda sobre la que operan la confirmación y la cancelación.",
       entradas: ["`usuarioId` (opcional, por query): número entero positivo."],
       reglas: [
+        "Devuelve únicamente reservas con `activo = true`; una dada de baja con RF-G8-07 deja de aparecer.",
         "Con `usuarioId`, devuelve todas las reservas de ese titular ordenadas por identificador ascendente.",
         "Sin `usuarioId`, devuelve las primeras 100 reservas del sandbox.",
-        "El listado incluye reservas en cualquier estado, incluidas las canceladas.",
+        "El listado incluye reservas en cualquier `estado` de negocio, incluidas las canceladas.",
         "No hay filtro por rango de fechas ni ordenamiento por fecha del turno: el orden es por identificador.",
       ],
       respuesta: [
@@ -93,8 +98,8 @@ export const grupo = {
       ],
       respuesta: ["`201 Created` con `data` conteniendo la reserva creada."],
       errores: [
-        ["`VALIDATION_ERROR`", "400", "Falta un campo obligatorio, o `servicio` o `fechaHora` están vacíos."],
-        ["`EXECUTION_ERROR`", "400", "El titular no existe, o la fecha y hora enviadas no son interpretables como fecha."],
+        ["`VALIDATION_ERROR`", "400", "Falta un campo obligatorio, `servicio`/`fechaHora` están vacíos, o el titular no existe."],
+        ["`EXECUTION_ERROR`", "400", "La fecha y hora enviadas no son interpretables como fecha."],
       ],
       fuente: "`app/api/v1/reservas/route.ts`",
       criterios: [
@@ -104,7 +109,80 @@ export const grupo = {
         "Al crear una reserva con una fecha ya pasada, la respuesta es 201: el sandbox no valida la vigencia.",
         "Al crear dos reservas con el mismo servicio, titular y horario, ambas son aceptadas: no hay control de solapamiento.",
         "Al enviar `fechaHora` con un texto no interpretable como fecha, la respuesta es 400 `EXECUTION_ERROR`.",
-        "Al crear una reserva para un `usuarioId` inexistente, la respuesta es 400 `EXECUTION_ERROR`.",
+        "Al crear una reserva para un `usuarioId` inexistente, la respuesta es 400 `VALIDATION_ERROR`.",
+      ],
+    },
+    {
+      id: "RF-G8-05",
+      nombre: "Consultar una reserva",
+      endpoint: "GET /api/v1/reservas/{id}",
+      descripcion: "Devuelve el detalle de una reserva puntual.",
+      entradas: ["`id` (obligatorio, en la ruta): número entero positivo."],
+      reglas: [
+        "Devuelve la reserva cuyo identificador coincide exactamente, siempre que siga `activo = true`.",
+        "Si no existe o ya está dada de baja, responde 404 con el mensaje \"Reserva no encontrada.\".",
+      ],
+      respuesta: ["`200 OK` con `data` conteniendo la reserva completa."],
+      errores: [
+        ["`NOT_FOUND`", "404", "No existe una reserva vigente con ese identificador."],
+        ["`VALIDATION_ERROR`", "400", "El identificador no es un entero positivo."],
+      ],
+      fuente: "`app/api/v1/reservas/[id]/route.ts`",
+      criterios: [
+        "Dada una reserva existente, al consultarla por su `id` la respuesta es 200 y los datos coinciden con los de la creación.",
+        "Al consultar una reserva inexistente o dada de baja, la respuesta es 404 `NOT_FOUND`.",
+      ],
+    },
+    {
+      id: "RF-G8-06",
+      nombre: "Reemplazar una reserva",
+      endpoint: "PUT /api/v1/reservas/{id}",
+      descripcion:
+        "Reemplaza el servicio, la fecha/hora y las notas de una reserva existente. El estado queda fuera de este reemplazo.",
+      entradas: [
+        "`id` (obligatorio, en la ruta): número entero positivo.",
+        "`servicio` (obligatorio): texto no vacío.",
+        "`fechaHora` (obligatorio): fecha y hora en formato ISO 8601 con zona horaria, o cualquier texto no vacío.",
+        "`notas` (opcional): texto libre.",
+      ],
+      reglas: [
+        "Solo puede reemplazar una reserva con `activo = true`; una dada de baja responde 404.",
+        "`estado` no forma parte del cuerpo: confirmar/cancelar sigue siendo exclusivo de RF-G8-03/04.",
+        "Igual que en la creación, no se valida que la nueva fecha sea futura ni que no se solape con otra reserva.",
+      ],
+      respuesta: ["`200 OK` con `data` conteniendo la reserva ya actualizada."],
+      errores: [
+        ["`NOT_FOUND`", "404", "No existe una reserva vigente con ese identificador."],
+        ["`VALIDATION_ERROR`", "400", "Falta un campo obligatorio."],
+        ["`EXECUTION_ERROR`", "400", "La nueva `fechaHora` no es interpretable como fecha."],
+      ],
+      fuente: "`app/api/v1/reservas/[id]/route.ts`",
+      criterios: [
+        "Dada una reserva existente, al reemplazar su `servicio` la respuesta es 200 y el cambio se refleja al consultarla.",
+        "El `estado` de la reserva no cambia por este reemplazo.",
+        "Al reemplazar con una `fechaHora` no interpretable, la respuesta es 400 `EXECUTION_ERROR`.",
+        "Al reemplazar una reserva inexistente o dada de baja, la respuesta es 404 `NOT_FOUND`.",
+      ],
+    },
+    {
+      id: "RF-G8-07",
+      nombre: "Dar de baja una reserva",
+      endpoint: "DELETE /api/v1/reservas/{id}",
+      descripcion: "Da de baja lógica una reserva, quitándola de los listados y consultas por id.",
+      entradas: ["`id` (obligatorio, en la ruta): número entero positivo."],
+      reglas: [
+        "Marca `activo = false`; la fila permanece en la base, nunca se borra físicamente.",
+        "Una reserva en cualquier `estado` de negocio (pendiente, confirmada, cancelada) puede darse de baja.",
+      ],
+      respuesta: ["`204 No Content`, sin cuerpo."],
+      errores: [
+        ["`NOT_FOUND`", "404", "No existe una reserva vigente con ese identificador."],
+        ["`VALIDATION_ERROR`", "400", "El identificador no es un entero positivo."],
+      ],
+      fuente: "`app/api/v1/reservas/[id]/route.ts`",
+      criterios: [
+        "Dada una reserva vigente, al darla de baja la respuesta es 204 sin cuerpo.",
+        "Tras la baja, `GET /reservas/{id}` sobre esa reserva responde 404, y deja de aparecer en RF-G8-01.",
       ],
     },
     {
@@ -119,6 +197,7 @@ export const grupo = {
         "La operación es idempotente: confirmar una reserva ya confirmada devuelve el mismo resultado.",
         "**Una reserva cancelada puede confirmarse**, porque no hay máquina de estados que lo impida.",
         "No se registra quién confirma ni cuándo se confirmó, más allá de la bitácora general de requests.",
+        "**No filtra por `activo`:** puede confirmar una reserva ya dada de baja con RF-G8-07, aunque esa reserva ya no aparezca en ningún listado.",
         "Si la reserva no existe, responde 404 y no modifica nada.",
       ],
       respuesta: ["`200 OK` con `data` conteniendo la reserva ya confirmada."],
@@ -143,8 +222,9 @@ export const grupo = {
       reglas: [
         "El estado de la reserva pasa a `cancelada` sin verificar el estado anterior.",
         "La operación es idempotente: cancelar una reserva ya cancelada devuelve el mismo resultado.",
-        "La cancelación no borra la reserva: la fila permanece y sigue apareciendo en los listados.",
+        "La cancelación no borra la reserva: la fila permanece y sigue apareciendo en los listados (mientras siga `activo = true`).",
         "No hay plazo mínimo de antelación ni penalidad por cancelar: una reserva puede cancelarse en cualquier momento, incluso pasada su fecha.",
+        "**No filtra por `activo`:** puede cancelar una reserva ya dada de baja con RF-G8-07.",
         "Si la reserva no existe, responde 404 y no modifica nada.",
       ],
       respuesta: ["`200 OK` con `data` conteniendo la reserva ya cancelada."],
@@ -177,6 +257,7 @@ export const grupo = {
     notas: [
       "El campo de fecha y hora del formulario es un selector del navegador, que envía un valor con formato válido: los escenarios de fecha inválida requieren llamar la API directamente.",
       "Las acciones de confirmar y cancelar refrescan la agenda, de modo que el nuevo estado se ve sin recargar la página.",
+      "No hay pantalla de detalle, edición ni baja individual: `GET`, `PUT` y `DELETE /reservas/{id}` (RF-G8-05/06/07) solo se pueden ejercitar llamando la API directamente.",
     ],
   },
 
@@ -225,5 +306,6 @@ export const grupo = {
     "El campo `servicio` es texto libre, sin catálogo de servicios ofrecidos.",
     "No hay recordatorios ni notificaciones asociadas a la reserva, pese a que el sandbox tiene un módulo de notificaciones.",
     "El listado no admite filtro por fecha ni por estado, y está limitado a 100 registros sin paginación.",
+    "`PATCH .../confirmar` y `.../cancelar` no filtran por `activo`: pueden operar sobre una reserva ya dada de baja con `DELETE`.",
   ],
 };

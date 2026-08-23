@@ -5,7 +5,7 @@ export const grupo = {
   modulo: "Módulo: Login / Logout / Recuperación de contraseña",
 
   alcance:
-    "Cubre el ingreso y la salida de un usuario de negocio del sandbox y el circuito de recuperación de acceso. El sandbox no almacena contraseñas: la identidad se prueba con el email de un usuario existente y activo, y cada evento del circuito queda registrado como una fila de bitácora en la tabla `sesiones`.",
+    "Cubre el ingreso y la salida de un usuario de negocio del sandbox y el circuito de recuperación de acceso. El sandbox no almacena contraseñas: la identidad se prueba con el email de un usuario existente y activo, y cada evento del circuito queda registrado como una fila de bitácora en la tabla `sesiones`. El módulo agrega además un recurso CRUD completo (`GET`/`POST`/`PUT`/`DELETE`) sobre esa misma tabla, pensado como ejemplo didáctico de las cuatro operaciones, separado del flujo realista de `/auth/*`.",
   fueraDeAlcance:
     "Verificación de contraseña, tokens de sesión, expiración, segundo factor y bloqueo por intentos fallidos: ninguno está implementado. La autenticación del canal es la API key, no el login de usuario.",
 
@@ -14,11 +14,17 @@ export const grupo = {
     { ruta: "POST /api/v1/auth/logout", rf: "RF-G1-02", desc: "Registra el evento de cierre de sesión de un usuario." },
     { ruta: "POST /api/v1/auth/forgot-password", rf: "RF-G1-03", desc: "Registra la solicitud de recuperación de contraseña." },
     { ruta: "POST /api/v1/auth/reset-password", rf: "RF-G1-04", desc: "Registra el reseteo de contraseña como completado." },
+    { ruta: "GET /api/v1/sesiones", rf: "RF-G1-05", desc: "Lista eventos de sesión vigentes, opcionalmente por titular." },
+    { ruta: "POST /api/v1/sesiones", rf: "RF-G1-06", desc: "Crea un evento de sesión genérico (cualquier tipo/resultado)." },
+    { ruta: "GET /api/v1/sesiones/{id}", rf: "RF-G1-07", desc: "Devuelve un evento de sesión puntual." },
+    { ruta: "PUT /api/v1/sesiones/{id}", rf: "RF-G1-08", desc: "Reemplaza los metadatos de contexto (`ip`, `userAgent`) de un evento." },
+    { ruta: "DELETE /api/v1/sesiones/{id}", rf: "RF-G1-09", desc: "Da de baja (soft-delete) un evento de sesión." },
   ],
 
   precondiciones: [
     "Los escenarios de login necesitan al menos un usuario con `activo = true` y otro con `activo = false` para cubrir el camino negativo; ambos existen en los datos sembrados.",
     "Los endpoints de logout y de reset completado identifican al usuario por `usuarioId` numérico, no por email.",
+    "El CRUD de `sesiones` (RF-G1-05 a RF-G1-09) es un recurso aparte del flujo `/auth/*`: crear o editar un evento con `POST`/`PUT` no inicia ni cierra ninguna sesión real, solo escribe/edita la fila de bitácora directamente.",
   ],
 
   tablas: [
@@ -45,15 +51,16 @@ export const grupo = {
           "`text`, obligatorio, uno de `login` / `logout` / `password_reset_solicitado` / `password_reset_completado`",
         ],
         ["`exitoso`", "`boolean`, obligatorio, por defecto `true`"],
-        ["`ip`", "`text`, opcional; la API la toma de los headers de la request"],
-        ["`user_agent`", "`text`, opcional; la API no lo completa"],
+        ["`ip`", "`text`, opcional; en `/auth/*` la API la toma de los headers de la request"],
+        ["`user_agent`", "`text`, opcional; `/auth/*` no lo completa, pero `POST`/`PUT /sesiones` sí lo aceptan"],
         ["`created_at`", "`timestamptz`, por defecto `now()`"],
+        ["`activo`", "`boolean`, obligatorio, por defecto `true`; lo usa el `DELETE` del CRUD (RF-G1-09)"],
       ],
     },
   ],
 
   notaDatos:
-    "La API solo escribe filas con `exitoso = true`: un intento de login rechazado devuelve error pero **no** deja registro en `sesiones`. Un escenario que espere ver el intento fallido en la bitácora fallará.",
+    "Los cuatro endpoints de `/auth/*` solo escriben filas con `exitoso = true`: un intento de login rechazado devuelve error pero **no** deja registro en `sesiones`. El CRUD genérico (`POST /sesiones`, RF-G1-06) no tiene esa restricción: acepta `exitoso=false` y cualquier `tipoEvento` de la lista, sin haber ocurrido el evento real — útil para sembrar datos de prueba, pero no confundirlo con una bitácora de auditoría fiable.",
 
   rf: [
     {
@@ -173,6 +180,132 @@ export const grupo = {
         "Después de completar el reseteo, el usuario puede iniciar sesión con normalidad; el login no se ve afectado por el reseteo.",
       ],
     },
+    {
+      id: "RF-G1-05",
+      nombre: "Listar eventos de sesión",
+      endpoint: "GET /api/v1/sesiones",
+      descripcion:
+        "Devuelve los eventos de sesión vigentes del sandbox, con la posibilidad de acotar el resultado a un titular determinado. Es el recurso CRUD genérico que expone la misma tabla que alimentan los cuatro endpoints de `/auth/*`.",
+      entradas: ["`usuarioId` (opcional, por query): número entero positivo."],
+      reglas: [
+        "Devuelve únicamente eventos con `activo = true`: uno dado de baja con RF-G1-09 deja de aparecer.",
+        "Con `usuarioId`, devuelve todos los eventos de ese titular ordenados por identificador ascendente; sin filtro, los primeros 100 eventos del sandbox.",
+        "Incluye tanto los eventos creados por `/auth/*` como los creados directamente con RF-G1-06.",
+      ],
+      respuesta: [
+        "`200 OK` con `data` como arreglo de eventos, cada uno con `id`, `usuario_id`, `tipo_evento`, `exitoso`, `ip`, `user_agent`, `created_at` y `activo`.",
+      ],
+      errores: [
+        ["`VALIDATION_ERROR`", "400", "`usuarioId` presente pero no numérico, cero o negativo."],
+        ["`UNAUTHORIZED`", "401", "Falta la API key o es inválida."],
+      ],
+      fuente: "`app/api/v1/sesiones/route.ts`",
+      criterios: [
+        "Al listar sesiones filtrando por un titular, todos los elementos devueltos tienen ese `usuario_id`.",
+        "Un evento dado de baja con RF-G1-09 deja de aparecer en este listado.",
+        "Un login exitoso vía RF-G1-01 aparece en este listado sin necesidad de crearlo aparte.",
+      ],
+    },
+    {
+      id: "RF-G1-06",
+      nombre: "Crear un evento de sesión genérico",
+      endpoint: "POST /api/v1/sesiones",
+      descripcion:
+        "Inserta directamente una fila en la bitácora de sesiones, sin pasar por el flujo de `/auth/*`. Pensado como ejemplo didáctico de creación vía CRUD, no como parte del circuito de autenticación real.",
+      entradas: [
+        "`usuarioId` (obligatorio): número entero positivo.",
+        "`tipoEvento` (obligatorio): uno de `login`, `logout`, `password_reset_solicitado`, `password_reset_completado`.",
+        "`exitoso` (opcional): exactamente el texto `true` o `false`; si se omite, la fila se crea con `true`.",
+        "`ip` (opcional): texto libre.",
+        "`userAgent` (opcional): texto libre.",
+      ],
+      reglas: [
+        "A diferencia de `/auth/login` y compañía, este endpoint **no valida que el evento haya ocurrido de verdad**: acepta `exitoso=false` o cualquier combinación de campos sin que exista un login/logout real detrás.",
+        "El titular debe existir: un `usuarioId` inexistente falla como error de ejecución por violación de clave foránea.",
+        "La fila se crea siempre con `activo = true`.",
+      ],
+      respuesta: ["`201 Created` con `data` conteniendo el evento creado."],
+      errores: [
+        ["`VALIDATION_ERROR`", "400", "Falta un campo obligatorio, `tipoEvento` tiene un valor fuera de la lista permitida, o el `usuarioId` indicado no existe."],
+      ],
+      fuente: "`app/api/v1/sesiones/route.ts`",
+      criterios: [
+        "Al crear un evento con datos válidos, la respuesta es 201 y el evento aparece en el listado de RF-G1-05.",
+        "Al crear un evento con `exitoso=false`, la respuesta es 201: a diferencia de `/auth/login`, este endpoint sí permite registrar un evento fallido.",
+        "Al crear un evento para un `usuarioId` inexistente, la respuesta es 400 `VALIDATION_ERROR`.",
+        "Al enviar `tipoEvento=eliminado`, la respuesta es 400 `VALIDATION_ERROR`.",
+      ],
+    },
+    {
+      id: "RF-G1-07",
+      nombre: "Consultar un evento de sesión",
+      endpoint: "GET /api/v1/sesiones/{id}",
+      descripcion: "Devuelve el detalle de un evento de sesión puntual.",
+      entradas: ["`id` (obligatorio, en la ruta): número entero positivo."],
+      reglas: [
+        "Devuelve el evento cuyo identificador coincide exactamente, solo si `activo = true`.",
+        "Un evento dado de baja responde igual que uno inexistente: 404.",
+      ],
+      respuesta: ["`200 OK` con `data` conteniendo el evento completo."],
+      errores: [
+        ["`NOT_FOUND`", "404", "No existe un evento vigente con ese identificador (mensaje: \"Sesión no encontrada.\")."],
+        ["`VALIDATION_ERROR`", "400", "El identificador no es un entero positivo."],
+      ],
+      fuente: "`app/api/v1/sesiones/[id]/route.ts`",
+      criterios: [
+        "Dado un evento creado con RF-G1-06, al consultarlo por su `id` la respuesta es 200 y los datos coinciden con los enviados.",
+        "Al consultar un evento ya dado de baja, la respuesta es 404 `NOT_FOUND`, igual que un identificador inexistente.",
+      ],
+    },
+    {
+      id: "RF-G1-08",
+      nombre: "Reemplazar los metadatos de un evento de sesión",
+      endpoint: "PUT /api/v1/sesiones/{id}",
+      descripcion:
+        "Actualiza únicamente los metadatos de contexto (`ip`, `userAgent`) de un evento existente. El contenido del evento en sí (`usuarioId`, `tipoEvento`, `exitoso`) queda fijo: un evento es un registro de lo que pasó, no algo que deba poder cambiarse retroactivamente.",
+      entradas: [
+        "`id` (obligatorio, en la ruta): número entero positivo.",
+        "`ip` (opcional): texto libre; si se omite se guarda vacío.",
+        "`userAgent` (opcional): texto libre; si se omite se guarda vacío.",
+      ],
+      reglas: [
+        "Solo puede reemplazar un evento con `activo = true`; uno dado de baja responde 404.",
+        "Omitir `ip` o `userAgent` en el cuerpo los deja vacíos (`null`), no los conserva: es un reemplazo completo, no un parche.",
+      ],
+      respuesta: ["`200 OK` con `data` conteniendo el evento ya actualizado."],
+      errores: [
+        ["`NOT_FOUND`", "404", "No existe un evento vigente con ese identificador (mensaje: \"Sesión no encontrada.\")."],
+        ["`VALIDATION_ERROR`", "400", "El identificador no es un entero positivo."],
+      ],
+      fuente: "`app/api/v1/sesiones/[id]/route.ts`",
+      criterios: [
+        "Dado un evento existente, al reemplazar su `ip` la respuesta es 200 y `data.ip` refleja el nuevo valor.",
+        "Al reemplazar sin enviar `userAgent`, el campo queda vacío aunque antes tuviera un valor.",
+        "Al reemplazar un evento inexistente o dado de baja, la respuesta es 404 `NOT_FOUND`.",
+      ],
+    },
+    {
+      id: "RF-G1-09",
+      nombre: "Dar de baja un evento de sesión",
+      endpoint: "DELETE /api/v1/sesiones/{id}",
+      descripcion: "Da de baja lógica un evento de sesión, quitándolo de los listados y consultas por id.",
+      entradas: ["`id` (obligatorio, en la ruta): número entero positivo."],
+      reglas: [
+        "Marca `activo = false`; la fila permanece en la base, nunca se borra físicamente.",
+        "Solo puede darse de baja un evento que todavía esté `activo = true`; repetir la baja sobre el mismo evento responde 404, no 204: a diferencia de las transiciones de estado (bloquear/activar), este `DELETE` **no es idempotente**.",
+      ],
+      respuesta: ["`204 No Content`, sin cuerpo."],
+      errores: [
+        ["`NOT_FOUND`", "404", "No existe un evento vigente con ese identificador, o ya estaba dado de baja."],
+        ["`VALIDATION_ERROR`", "400", "El identificador no es un entero positivo."],
+      ],
+      fuente: "`app/api/v1/sesiones/[id]/route.ts`",
+      criterios: [
+        "Dado un evento vigente, al darlo de baja la respuesta es 204 sin cuerpo.",
+        "Tras la baja, `GET /sesiones/{id}` sobre ese mismo evento responde 404.",
+        "Al repetir la baja sobre el mismo evento, la segunda respuesta es 404 `NOT_FOUND`, no 204.",
+      ],
+    },
   ],
 
   web: {
@@ -237,7 +370,9 @@ export const grupo = {
     "Los intentos de acceso rechazados no se registran en `sesiones`, por lo que la bitácora no sirve para detectar ataques de fuerza bruta.",
     "El circuito de recuperación no emite token, no vence y no exige la solicitud previa: cualquier `usuarioId` válido puede marcarse como reseteado.",
     "`forgot-password` responde 404 ante un email desconocido, lo que permite enumerar usuarios registrados.",
-    "La columna `user_agent` de `sesiones` existe pero la API nunca la completa.",
+    "La columna `user_agent` de `sesiones` existe pero `/auth/*` nunca la completa (sí lo hace el CRUD genérico).",
     "No hay cierre de sesión del lado del servidor: `logout` solo agrega una fila a la bitácora, sin invalidar nada.",
+    "El CRUD genérico de `sesiones` (RF-G1-06/08) permite crear o editar eventos con `exitoso=false` o cualquier `ip`/`userAgent` sin que el evento haya ocurrido de verdad: no es una fuente confiable de auditoría, solo un ejemplo didáctico de CRUD.",
+    "A diferencia de las transiciones de estado del resto de la API, `DELETE /sesiones/{id}` no es idempotente: repetirlo sobre el mismo evento da 404, no 204.",
   ],
 };

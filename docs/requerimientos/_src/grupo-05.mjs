@@ -5,13 +5,16 @@ export const grupo = {
   modulo: "Módulo: Gestión de tarjetas",
 
   alcance:
-    "Cubre la consulta del plástico emitido a un titular, la emisión de una tarjeta nueva y el ciclo de bloqueo y desbloqueo. El número de tarjeta que devuelve el sistema es siempre un número enmascarado: el sandbox no guarda datos reales de tarjeta.",
+    "Cubre el CRUD de tarjetas emitidas a un titular y el ciclo de bloqueo y desbloqueo. El número de tarjeta que devuelve el sistema es siempre un número enmascarado: el sandbox no guarda datos reales de tarjeta.",
   fueraDeAlcance:
     "Consumos y autorizaciones de compra, cálculo de límites disponibles, fecha de expiración, renovación, reposición por robo o extravío y estado de cuenta: ninguna de estas operaciones existe en el sandbox.",
 
   endpoints: [
-    { ruta: "GET /api/v1/tarjetas", rf: "RF-G5-01", desc: "Lista tarjetas, opcionalmente filtradas por titular." },
+    { ruta: "GET /api/v1/tarjetas", rf: "RF-G5-01", desc: "Lista tarjetas activas, opcionalmente filtradas por titular." },
     { ruta: "POST /api/v1/tarjetas", rf: "RF-G5-02", desc: "Emite una tarjeta nueva, activa desde el momento de la emisión." },
+    { ruta: "GET /api/v1/tarjetas/{id}", rf: "RF-G5-05", desc: "Devuelve el detalle de una tarjeta." },
+    { ruta: "PUT /api/v1/tarjetas/{id}", rf: "RF-G5-06", desc: "Reemplaza tipo, marca y límite de crédito de una tarjeta." },
+    { ruta: "DELETE /api/v1/tarjetas/{id}", rf: "RF-G5-07", desc: "Da de baja (soft-delete) una tarjeta." },
     { ruta: "PATCH /api/v1/tarjetas/{id}/bloquear", rf: "RF-G5-03", desc: "Bloquea una tarjeta." },
     { ruta: "PATCH /api/v1/tarjetas/{id}/activar", rf: "RF-G5-04", desc: "Activa (o reactiva) una tarjeta." },
   ],
@@ -35,6 +38,7 @@ export const grupo = {
         ["`saldo_actual`", "`numeric(12,2)`, obligatorio, por defecto 0"],
         ["`estado`", "`text`, uno de `activa` / `bloqueada` / `vencida`; por defecto `activa`"],
         ["`created_at`", "`timestamptz`, por defecto `now()`"],
+        ["`activo`", "`boolean`, obligatorio, por defecto `true`; lo usan `GET`/`PUT`/`DELETE` para filtrar/operar"],
       ],
     },
   ],
@@ -51,9 +55,10 @@ export const grupo = {
         "Devuelve las tarjetas del sandbox, con la posibilidad de acotar el resultado a un titular determinado.",
       entradas: ["`usuarioId` (opcional, por query): número entero positivo."],
       reglas: [
-        "Con `usuarioId`, devuelve todas las tarjetas de ese titular ordenadas por identificador ascendente.",
-        "Sin `usuarioId`, devuelve las primeras 100 tarjetas del sandbox.",
-        "El listado incluye tarjetas en cualquier estado: no filtra bloqueadas ni vencidas.",
+        "Devuelve únicamente tarjetas con `activo = true`; una dada de baja con RF-G5-07 deja de aparecer.",
+        "Con `usuarioId`, devuelve todas las tarjetas activas de ese titular ordenadas por identificador ascendente.",
+        "Sin `usuarioId`, devuelve las primeras 100 tarjetas activas del sandbox.",
+        "El listado incluye tarjetas en cualquier `estado` de negocio (activa/bloqueada/vencida): no filtra por eso, solo por `activo`.",
         "Un titular sin tarjetas devuelve una lista vacía.",
       ],
       respuesta: [
@@ -92,8 +97,7 @@ export const grupo = {
       ],
       respuesta: ["`201 Created` con `data` conteniendo la tarjeta emitida."],
       errores: [
-        ["`VALIDATION_ERROR`", "400", "Falta un campo obligatorio, o `tipo` o `marca` tienen un valor fuera de la lista permitida."],
-        ["`EXECUTION_ERROR`", "400", "El titular indicado no existe."],
+        ["`VALIDATION_ERROR`", "400", "Falta un campo obligatorio, `tipo`/`marca` tienen un valor fuera de la lista permitida, o el titular indicado no existe."],
       ],
       fuente: "`app/api/v1/tarjetas/route.ts`",
       criterios: [
@@ -102,8 +106,83 @@ export const grupo = {
         "Al emitir una tarjeta de crédito, `limite_credito` queda vacío: la emisión no asigna límite.",
         "Al emitir dos tarjetas seguidas para el mismo titular con el mismo tipo y marca, ambas respuestas son 201 y se crean dos tarjetas distintas.",
         "Al emitir con `marca=amex`, la respuesta es 400 `VALIDATION_ERROR`.",
-        "Al emitir para un `usuarioId` inexistente, la respuesta es 400 `EXECUTION_ERROR` y no se crea ninguna tarjeta.",
+        "Al emitir para un `usuarioId` inexistente, la respuesta es 400 `VALIDATION_ERROR` y no se crea ninguna tarjeta.",
         "Al emitir para un titular con KYC pendiente, la operación es aceptada: la emisión no consulta el estado de verificación.",
+      ],
+    },
+    {
+      id: "RF-G5-05",
+      nombre: "Consultar una tarjeta",
+      endpoint: "GET /api/v1/tarjetas/{id}",
+      descripcion: "Devuelve el detalle de una tarjeta puntual.",
+      entradas: ["`id` (obligatorio, en la ruta): número entero positivo."],
+      reglas: [
+        "Devuelve la tarjeta cuyo identificador coincide exactamente, siempre que siga `activo = true`.",
+        "Si no existe o ya está dada de baja, responde 404 con el mensaje \"Tarjeta no encontrada.\".",
+      ],
+      respuesta: ["`200 OK` con `data` conteniendo la tarjeta completa."],
+      errores: [
+        ["`NOT_FOUND`", "404", "No existe una tarjeta vigente con ese identificador."],
+        ["`VALIDATION_ERROR`", "400", "El identificador no es un entero positivo."],
+      ],
+      fuente: "`app/api/v1/tarjetas/[id]/route.ts`",
+      criterios: [
+        "Dada una tarjeta existente, al consultarla por su `id` la respuesta es 200 y los datos coinciden con los de la emisión.",
+        "Al consultar una tarjeta inexistente o dada de baja, la respuesta es 404 `NOT_FOUND`.",
+      ],
+    },
+    {
+      id: "RF-G5-06",
+      nombre: "Reemplazar una tarjeta",
+      endpoint: "PUT /api/v1/tarjetas/{id}",
+      descripcion:
+        "Reemplaza el tipo, la marca y, opcionalmente, el límite de crédito de una tarjeta existente. Es la única forma de asignarle un límite de crédito, algo que la emisión (RF-G5-02) no permite.",
+      entradas: [
+        "`id` (obligatorio, en la ruta): número entero positivo.",
+        "`tipo` (obligatorio): `credito` o `debito`.",
+        "`marca` (obligatorio): `visa` o `mastercard`.",
+        "`limiteCredito` (opcional): número mayor que cero.",
+      ],
+      reglas: [
+        "Solo puede reemplazar una tarjeta con `activo = true`; una dada de baja responde 404.",
+        "`numeroEnmascarado` y `saldoActual` no forman parte del cuerpo: quedan fuera del control del cliente.",
+        "`estado` tampoco forma parte del cuerpo: bloquear/activar sigue siendo exclusivo de RF-G5-03/04.",
+        "Omitir `limiteCredito` lo deja vacío (`null`), aunque la tarjeta ya tuviera uno asignado: es un reemplazo completo, no un parche.",
+      ],
+      respuesta: ["`200 OK` con `data` conteniendo la tarjeta ya actualizada."],
+      errores: [
+        ["`NOT_FOUND`", "404", "No existe una tarjeta vigente con ese identificador."],
+        ["`VALIDATION_ERROR`", "400", "Falta un campo obligatorio, o tiene un valor fuera de la lista permitida."],
+      ],
+      fuente: "`app/api/v1/tarjetas/[id]/route.ts`",
+      criterios: [
+        "Dada una tarjeta de crédito sin límite, al reemplazarla enviando `limiteCredito`, la respuesta es 200 y `data.limite_credito` refleja el nuevo valor.",
+        "El `estado` de la tarjeta no cambia por este reemplazo.",
+        "Al reemplazar sin enviar `limiteCredito` una tarjeta que ya tenía uno asignado, el límite queda vacío.",
+        "Al reemplazar una tarjeta inexistente o dada de baja, la respuesta es 404 `NOT_FOUND`.",
+      ],
+    },
+    {
+      id: "RF-G5-07",
+      nombre: "Dar de baja una tarjeta",
+      endpoint: "DELETE /api/v1/tarjetas/{id}",
+      descripcion: "Da de baja lógica una tarjeta, quitándola de los listados y consultas por id.",
+      entradas: ["`id` (obligatorio, en la ruta): número entero positivo."],
+      reglas: [
+        "Marca `activo = false`; la fila permanece en la base, nunca se borra físicamente.",
+        "Es distinta de bloquear (RF-G5-03): bloquear cambia el `estado` de negocio mientras la tarjeta sigue existiendo para el CRUD; dar de baja la saca del CRUD sin importar su `estado` de negocio.",
+        "Una tarjeta ya bloqueada o vencida también puede darse de baja.",
+      ],
+      respuesta: ["`204 No Content`, sin cuerpo."],
+      errores: [
+        ["`NOT_FOUND`", "404", "No existe una tarjeta vigente con ese identificador."],
+        ["`VALIDATION_ERROR`", "400", "El identificador no es un entero positivo."],
+      ],
+      fuente: "`app/api/v1/tarjetas/[id]/route.ts`",
+      criterios: [
+        "Dada una tarjeta vigente, al darla de baja la respuesta es 204 sin cuerpo.",
+        "Tras la baja, `GET /tarjetas/{id}` sobre esa tarjeta responde 404, y deja de aparecer en RF-G5-01.",
+        "Dar de baja una tarjeta bloqueada es aceptado igual (204).",
       ],
     },
     {
@@ -176,6 +255,7 @@ export const grupo = {
     notas: [
       "Los botones de acción de cada fila refrescan el listado tras la operación, de modo que el nuevo estado se ve sin recargar la página.",
       "El campo de titular del formulario se completa por defecto con el usuario en sesión, pero puede cambiarse a mano.",
+      "No hay pantalla de detalle, edición ni baja individual: `GET`, `PUT` y `DELETE /tarjetas/{id}` (RF-G5-05/06/07) solo se pueden ejercitar llamando la API directamente.",
     ],
   },
 
@@ -224,5 +304,7 @@ export const grupo = {
     "`saldo_actual` nunca cambia: no hay consumos, autorizaciones ni pagos que lo muevan.",
     "No hay tope de tarjetas por titular ni control de duplicados.",
     "El bloqueo no registra motivo ni solicitante, y no existe un historial de cambios de estado.",
+    "`PATCH .../bloquear` y `.../activar` no filtran por `activo`: una tarjeta dada de baja con `DELETE` (RF-G5-07) ya no aparece en `GET`, pero igual puede bloquearse o activarse.",
+    "El límite de crédito solo puede asignarse vía `PUT` (RF-G5-06), nunca en la emisión (RF-G5-02): una tarjeta de crédito recién emitida siempre nace sin límite.",
   ],
 };

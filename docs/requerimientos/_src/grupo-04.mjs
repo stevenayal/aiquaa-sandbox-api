@@ -5,13 +5,16 @@ export const grupo = {
   modulo: "Módulo: Alta de nuevo cliente (KYC básico)",
 
   alcance:
-    "Cubre el alta de un cliente nuevo con sus datos de identificación, la consulta de su ficha y la actualización del estado de verificación de identidad (KYC). Es el módulo que da origen a todos los demás: el `usuarioId` que devuelve el alta es la entrada de cuentas, tarjetas, facturas, órdenes, reservas, notificaciones y roles.",
+    "Cubre el CRUD completo de clientes (alta, listado, consulta, reemplazo y baja) y la actualización del estado de verificación de identidad (KYC). Es el módulo que da origen a todos los demás: el `usuarioId` que devuelve el alta es la entrada de cuentas, tarjetas, facturas, órdenes, reservas, notificaciones y roles.",
   fueraDeAlcance:
     "Carga de documentos respaldatorios, validación contra fuentes externas, puntaje de riesgo, y flujo de aprobación con revisor: el estado de KYC se fija directamente por API.",
 
   endpoints: [
+    { ruta: "GET /api/v1/usuarios", rf: "RF-G4-04", desc: "Lista los clientes activos del sandbox." },
     { ruta: "POST /api/v1/usuarios", rf: "RF-G4-01", desc: "Da de alta un cliente nuevo con KYC pendiente." },
     { ruta: "GET /api/v1/usuarios/{id}", rf: "RF-G4-02", desc: "Devuelve la ficha de un cliente." },
+    { ruta: "PUT /api/v1/usuarios/{id}", rf: "RF-G4-05", desc: "Reemplaza los datos de identificación de un cliente." },
+    { ruta: "DELETE /api/v1/usuarios/{id}", rf: "RF-G4-06", desc: "Da de baja (soft-delete) un cliente." },
     { ruta: "PATCH /api/v1/usuarios/{id}/kyc", rf: "RF-G4-03", desc: "Actualiza el estado de verificación de identidad." },
   ],
 
@@ -61,7 +64,7 @@ export const grupo = {
         "`direccion` (opcional): texto libre; si se omite se guarda vacía.",
       ],
       reglas: [
-        "El email y el número de documento deben ser únicos: un valor repetido es rechazado por la base de datos.",
+        "El email y el número de documento deben ser únicos: un valor repetido es rechazado por la base de datos con `409 CONFLICT`.",
         "El cliente nuevo queda siempre con `kyc_estado = 'pendiente'` y `activo = true`; ninguno de los dos puede enviarse en el alta.",
         "El tipo de documento se limita a las tres opciones válidas, tanto en la entrada como en la base.",
         "La fecha de nacimiento no se valida contra ninguna edad mínima: se acepta cualquier fecha, incluso futura, mientras sea una fecha reconocible.",
@@ -72,14 +75,15 @@ export const grupo = {
       ],
       errores: [
         ["`VALIDATION_ERROR`", "400", "Falta un campo obligatorio, el email no tiene formato válido o el tipo de documento no está permitido."],
-        ["`EXECUTION_ERROR`", "400", "El email o el número de documento ya existen, o la fecha de nacimiento no es una fecha válida."],
+        ["`CONFLICT`", "409", "El email o el número de documento ya pertenecen a otro cliente."],
+        ["`EXECUTION_ERROR`", "400", "La fecha de nacimiento no es una fecha válida."],
       ],
       fuente: "`app/api/v1/usuarios/route.ts`",
       criterios: [
         "Al dar de alta un cliente con datos válidos y únicos, la respuesta es 201, `data.id` es un número y `data.kyc_estado` es `pendiente`.",
         "El cliente creado queda con `activo = true`, por lo que puede iniciar sesión con RF-G1-01 usando el email registrado.",
-        "Al dar de alta un cliente con un email ya existente, la respuesta es 400 `EXECUTION_ERROR` y no se crea ninguna ficha.",
-        "Al dar de alta un cliente con un número de documento ya existente, la respuesta es 400 `EXECUTION_ERROR`, aunque el email sea nuevo.",
+        "Al dar de alta un cliente con un email ya existente, la respuesta es 409 `CONFLICT` y no se crea ninguna ficha.",
+        "Al dar de alta un cliente con un número de documento ya existente, la respuesta es 409 `CONFLICT`, aunque el email sea nuevo.",
         "Al omitir el nombre, o al enviar un email sin formato válido, la respuesta es 400 `VALIDATION_ERROR`.",
         "Al enviar `documentoTipo=DNI`, la respuesta es 400 `VALIDATION_ERROR` porque el valor no pertenece a la lista permitida.",
         "El alta sin `fechaNacimiento` ni `direccion` es aceptada y esos campos quedan vacíos en la ficha.",
@@ -93,20 +97,20 @@ export const grupo = {
         "Devuelve la ficha completa de un cliente, incluidos sus datos de identificación y su estado de verificación.",
       entradas: ["`id` (obligatorio, en la ruta): número entero positivo."],
       reglas: [
-        "Devuelve el cliente cuyo identificador coincide exactamente, esté activo o no.",
-        "Si no existe, responde 404 con el mensaje \"Usuario no encontrado.\".",
+        "Devuelve el cliente cuyo identificador coincide exactamente, siempre que siga `activo = true` (dado de baja con RF-G4-06 responde 404).",
+        "Si no existe o ya está dado de baja, responde 404 con el mensaje \"Usuario no encontrado.\".",
         "La ficha se devuelve completa, sin enmascarar el número de documento.",
       ],
       respuesta: ["`200 OK` con `data` conteniendo la ficha completa del cliente."],
       errores: [
-        ["`NOT_FOUND`", "404", "No existe un cliente con ese identificador."],
+        ["`NOT_FOUND`", "404", "No existe un cliente con ese identificador, o ya está dado de baja."],
         ["`VALIDATION_ERROR`", "400", "El identificador no es un entero positivo."],
       ],
       fuente: "`app/api/v1/usuarios/[id]/route.ts`",
       criterios: [
         "Dado el `id` devuelto por un alta, al consultar la ficha la respuesta es 200 y los datos coinciden con los enviados en el alta.",
         "Al consultar un identificador inexistente, la respuesta es 404 `NOT_FOUND` con el mensaje \"Usuario no encontrado.\".",
-        "Al consultar la ficha de un cliente inactivo, la respuesta es 200: la consulta no filtra por estado de actividad.",
+        "Al consultar la ficha de un cliente dado de baja con RF-G4-06, la respuesta es 404, no 200.",
       ],
     },
     {
@@ -140,6 +144,83 @@ export const grupo = {
         "Al actualizar el KYC de un cliente inexistente, la respuesta es 404 `NOT_FOUND`.",
       ],
     },
+    {
+      id: "RF-G4-04",
+      nombre: "Listar clientes",
+      endpoint: "GET /api/v1/usuarios",
+      descripcion: "Devuelve la lista de clientes activos del sandbox.",
+      entradas: ["No recibe parámetros de filtro."],
+      reglas: [
+        "Devuelve únicamente clientes con `activo = true`, ordenados por identificador ascendente, limitados a 100 registros.",
+        "No admite filtro por `usuarioId`, `email`, `kycEstado` ni ningún otro campo: es un listado plano.",
+      ],
+      respuesta: ["`200 OK` con `data` como arreglo de fichas de cliente."],
+      errores: [["`UNAUTHORIZED`", "401", "Falta la API key o es inválida."]],
+      fuente: "`app/api/v1/usuarios/route.ts`",
+      criterios: [
+        "Al listar clientes, la respuesta es 200 y `data` contiene como máximo 100 elementos.",
+        "Un cliente recién dado de alta aparece en este listado.",
+        "Un cliente dado de baja con RF-G4-06 deja de aparecer en este listado.",
+      ],
+    },
+    {
+      id: "RF-G4-05",
+      nombre: "Reemplazar la ficha de un cliente",
+      endpoint: "PUT /api/v1/usuarios/{id}",
+      descripcion:
+        "Reemplaza los datos de identificación de un cliente existente. El estado de KYC y el estado de actividad quedan fuera de este reemplazo.",
+      entradas: [
+        "`id` (obligatorio, en la ruta): número entero positivo.",
+        "`nombre` (obligatorio): texto no vacío.",
+        "`email` (obligatorio): texto con formato de correo electrónico válido.",
+        "`documentoTipo` (obligatorio): uno de `CI`, `pasaporte`, `RUC`.",
+        "`documentoNumero` (obligatorio): texto no vacío.",
+        "`fechaNacimiento` (opcional): fecha.",
+        "`direccion` (opcional): texto libre.",
+      ],
+      reglas: [
+        "Solo puede reemplazar un cliente con `activo = true`; uno dado de baja responde 404.",
+        "`kycEstado` no forma parte del cuerpo: sigue gobernado exclusivamente por `PATCH .../kyc` (RF-G4-03).",
+        "`activo` tampoco forma parte del cuerpo: darlo de baja sigue siendo exclusivo de `DELETE` (RF-G4-06).",
+        "Reemplazar el `email` o el `documentoNumero` por uno usado en otro cliente es rechazado por unicidad.",
+      ],
+      respuesta: ["`200 OK` con `data` conteniendo la ficha ya actualizada."],
+      errores: [
+        ["`NOT_FOUND`", "404", "No existe un cliente vigente con ese identificador."],
+        ["`VALIDATION_ERROR`", "400", "Falta un campo obligatorio o tiene un formato inválido."],
+        ["`CONFLICT`", "409", "El nuevo `email` o `documentoNumero` ya pertenecen a otro cliente."],
+      ],
+      fuente: "`app/api/v1/usuarios/[id]/route.ts`",
+      criterios: [
+        "Dado un cliente existente, al reemplazar su `direccion` la respuesta es 200 y el cambio se refleja al consultarlo.",
+        "El `kyc_estado` del cliente no cambia por este reemplazo.",
+        "Al reemplazar el `email` por el de otro cliente existente, la respuesta es 409 `CONFLICT`.",
+        "Al reemplazar un cliente inexistente o dado de baja, la respuesta es 404 `NOT_FOUND`.",
+      ],
+    },
+    {
+      id: "RF-G4-06",
+      nombre: "Dar de baja un cliente",
+      endpoint: "DELETE /api/v1/usuarios/{id}",
+      descripcion: "Da de baja lógica un cliente, quitándolo de los listados y consultas por id.",
+      entradas: ["`id` (obligatorio, en la ruta): número entero positivo."],
+      reglas: [
+        "Marca `activo = false`; la fila permanece en la base, nunca se borra físicamente.",
+        "No verifica si el cliente tiene cuentas, tarjetas, facturas, órdenes, reservas o roles asociados: todos esos recursos siguen existiendo y siendo consultables por su propio id después de la baja.",
+        "Un cliente dado de baja por este endpoint ya no puede iniciar sesión: RF-G1-01 exige `activo = true`.",
+      ],
+      respuesta: ["`204 No Content`, sin cuerpo."],
+      errores: [
+        ["`NOT_FOUND`", "404", "No existe un cliente vigente con ese identificador."],
+        ["`VALIDATION_ERROR`", "400", "El identificador no es un entero positivo."],
+      ],
+      fuente: "`app/api/v1/usuarios/[id]/route.ts`",
+      criterios: [
+        "Dado un cliente vigente, al darlo de baja la respuesta es 204 sin cuerpo.",
+        "Tras la baja, `GET /usuarios/{id}` sobre ese cliente responde 404, y el login de RF-G1-01 con su email responde 400 (usuario no encontrado o inactivo).",
+        "Dar de baja a un cliente no elimina ni oculta sus cuentas o tarjetas existentes, consultables por su propio id.",
+      ],
+    },
   ],
 
   web: {
@@ -157,6 +238,7 @@ export const grupo = {
       "Las pantallas de este módulo son accesibles con solo la API key, sin usuario de negocio en sesión: son el punto de partida para conseguir un `usuarioId` con el que operar el resto de los módulos.",
       "Por esa razón, el enlace \"Usuarios\" aparece siempre en el menú, cualquiera sea el grupo del alumno.",
       "Tras actualizar el KYC, la ficha en pantalla se refresca con el estado devuelto por la API.",
+      "No hay pantalla de listado, edición ni baja de clientes: `GET /usuarios` (lista), `PUT` y `DELETE /usuarios/{id}` (RF-G4-04/05/06) solo se pueden ejercitar llamando la API directamente.",
     ],
   },
 
@@ -200,8 +282,9 @@ export const grupo = {
     "El estado de KYC puede moverse en cualquier dirección, sin máquina de estados ni registro de quién lo cambió ni cuándo.",
     "No existe traza de auditoría específica del cambio de KYC más allá de la bitácora general de requests.",
     "El KYC no condiciona ninguna otra operación del sandbox: no bloquea login, transferencias, tarjetas ni pagos.",
-    "No hay verificación de unicidad previa al alta: el duplicado se descubre como error de base de datos, con el mensaje técnico de PostgreSQL.",
+    "No hay verificación de unicidad previa al alta: el duplicado se descubre recién al insertar, aunque desde la actualización de CRUD ya se traduce a `409 CONFLICT` en vez de un `400` genérico.",
     "No se valida coherencia entre tipo y formato del documento (por ejemplo, un RUC con formato de cédula es aceptado).",
-    "No existe baja ni edición del cliente: `activo` nunca cambia por API y el resto de los datos no se puede corregir.",
+    "Dar de baja un cliente (`DELETE`) no verifica ni bloquea sus cuentas, tarjetas, facturas, órdenes, reservas ni roles asociados: todos siguen existiendo y siendo consultables por su propio id.",
+    "El reemplazo (`PUT`) no valida coherencia entre `documentoTipo` y `documentoNumero`, igual que el alta.",
   ],
 };

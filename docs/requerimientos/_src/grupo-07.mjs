@@ -10,9 +10,11 @@ export const grupo = {
     "Catálogo de productos, control de existencias, carrito persistente antes del cierre, cupones y descuentos, costos de envío, cobro del importe y cambios de estado posteriores de la orden.",
 
   endpoints: [
-    { ruta: "GET /api/v1/ordenes", rf: "RF-G7-01", desc: "Lista órdenes, opcionalmente filtradas por comprador." },
+    { ruta: "GET /api/v1/ordenes", rf: "RF-G7-01", desc: "Lista órdenes activas, opcionalmente filtradas por comprador." },
     { ruta: "POST /api/v1/ordenes", rf: "RF-G7-02", desc: "Cierra la compra: crea la orden con sus ítems." },
     { ruta: "GET /api/v1/ordenes/{id}", rf: "RF-G7-03", desc: "Devuelve una orden con el detalle de sus ítems." },
+    { ruta: "PUT /api/v1/ordenes/{id}", rf: "RF-G7-04", desc: "Recalcula producto/monto de la orden a partir de ítems (no toca `items_orden`)." },
+    { ruta: "DELETE /api/v1/ordenes/{id}", rf: "RF-G7-05", desc: "Da de baja (soft-delete) una orden." },
   ],
 
   precondiciones: [
@@ -34,6 +36,7 @@ export const grupo = {
           "`text`, uno de `pendiente` / `pagada` / `enviada` / `cancelada`; por defecto `pendiente`",
         ],
         ["`created_at`", "`timestamptz`, por defecto `now()`"],
+        ["`activo`", "`boolean`, obligatorio, por defecto `true`; lo usan `GET`/`PUT`/`DELETE` para filtrar/operar"],
       ],
     },
     {
@@ -63,6 +66,7 @@ export const grupo = {
         "Devuelve las órdenes del sandbox, con la posibilidad de acotar el resultado a un comprador determinado. La lista no incluye el detalle de ítems.",
       entradas: ["`usuarioId` (opcional, por query): número entero positivo."],
       reglas: [
+        "Devuelve únicamente órdenes con `activo = true`; una dada de baja con RF-G7-05 deja de aparecer.",
         "Con `usuarioId`, devuelve todas las órdenes de ese comprador ordenadas por identificador ascendente.",
         "Sin `usuarioId`, devuelve las primeras 100 órdenes del sandbox.",
         "La respuesta contiene solo las cabeceras: para ver los ítems hay que consultar la orden puntual (RF-G7-03).",
@@ -114,9 +118,9 @@ export const grupo = {
         [
           "`VALIDATION_ERROR`",
           "400",
-          "Falta `usuarioId`, el arreglo de ítems está vacío o ausente, o un ítem tiene cantidad o precio no positivos, o enviados como texto.",
+          "Falta `usuarioId`, el arreglo de ítems está vacío o ausente, un ítem tiene cantidad o precio no positivos o enviados como texto, o el comprador indicado no existe.",
         ],
-        ["`EXECUTION_ERROR`", "400", "El comprador indicado no existe, o el importe supera la capacidad del campo."],
+        ["`EXECUTION_ERROR`", "400", "El importe total supera la capacidad numérica del campo `monto`."],
       ],
       fuente: "`app/api/v1/ordenes/route.ts`",
       criterios: [
@@ -127,7 +131,7 @@ export const grupo = {
         "Al cerrar una compra con el arreglo de ítems vacío, la respuesta es 400 `VALIDATION_ERROR` y no se crea ninguna orden.",
         "Al enviar un ítem con cantidad cero o negativa, la respuesta es 400 `VALIDATION_ERROR`.",
         "Al enviar la cantidad como texto (por ejemplo `\"2\"`), la respuesta es 400 `VALIDATION_ERROR`.",
-        "Al cerrar la compra para un comprador inexistente, la respuesta es 400 `EXECUTION_ERROR` y no queda ni la cabecera ni ítem alguno.",
+        "Al cerrar la compra para un comprador inexistente, la respuesta es 400 `VALIDATION_ERROR` y no queda ni la cabecera ni ítem alguno.",
       ],
     },
     {
@@ -157,6 +161,58 @@ export const grupo = {
         "El orden de los ítems devueltos es estable entre consultas sucesivas.",
       ],
     },
+    {
+      id: "RF-G7-04",
+      nombre: "Recalcular una orden",
+      endpoint: "PUT /api/v1/ordenes/{id}",
+      descripcion:
+        "Recalcula el producto representativo y el importe total de una orden a partir de una lista de ítems enviada de nuevo. **No modifica las filas de `items_orden`**: el rol `qa_api` no tiene permiso `DELETE`, así que no hay forma de reemplazar el detalle sin dejar filas huérfanas, y este endpoint no inserta ítems nuevos tampoco. Solo actualiza los dos campos propios de la cabecera.",
+      entradas: [
+        "`id` (obligatorio, en la ruta): número entero positivo.",
+        "`items` (obligatorio): arreglo con al menos un elemento, con la misma forma que en el checkout (`producto`, `cantidad`, `precioUnitario`).",
+      ],
+      reglas: [
+        "El `monto` se recalcula como la suma de cantidad por precio unitario de los ítems enviados, igual que en el checkout.",
+        "El `producto` de la cabecera se reemplaza por el del primer ítem del arreglo enviado.",
+        "**Los ítems enviados nunca se guardan en `items_orden`:** tras este `PUT`, `GET /ordenes/{id}` sigue devolviendo el detalle de ítems original de la compra, que ya no coincide con el nuevo `monto` de la cabecera.",
+        "Solo puede recalcular una orden con `activo = true`; una dada de baja responde 404.",
+        "`estado` no forma parte del cuerpo: no cambia por este reemplazo.",
+      ],
+      respuesta: ["`200 OK` con `data` conteniendo la cabecera de la orden ya actualizada (sin la propiedad `items`)."],
+      errores: [
+        ["`NOT_FOUND`", "404", "No existe una orden vigente con ese identificador."],
+        ["`VALIDATION_ERROR`", "400", "Falta `items`, el arreglo está vacío, o algún ítem tiene cantidad o precio no positivos."],
+      ],
+      fuente: "`app/api/v1/ordenes/[id]/route.ts`",
+      criterios: [
+        "Dada una orden existente, al recalcularla con ítems distintos la respuesta es 200 y `data.monto` coincide con la suma de los nuevos ítems.",
+        "Al consultar luego la orden con RF-G7-03, `data.items` sigue mostrando los ítems originales del checkout, no los enviados en el `PUT`, aunque `data.monto` ya sea el nuevo — una inconsistencia real a documentar, no a \"corregir\" en el escenario de prueba.",
+        "Al recalcular con el arreglo de ítems vacío, la respuesta es 400 `VALIDATION_ERROR`.",
+        "Al recalcular una orden inexistente o dada de baja, la respuesta es 404 `NOT_FOUND`.",
+      ],
+    },
+    {
+      id: "RF-G7-05",
+      nombre: "Dar de baja una orden",
+      endpoint: "DELETE /api/v1/ordenes/{id}",
+      descripcion: "Da de baja lógica una orden, quitándola de los listados y consultas por id.",
+      entradas: ["`id` (obligatorio, en la ruta): número entero positivo."],
+      reglas: [
+        "Marca `activo = false`; la fila permanece en la base, nunca se borra físicamente.",
+        "No borra ni afecta las filas de `items_orden` asociadas: quedan huérfanas (ya no accesibles por `GET /ordenes/{id}`, que responde 404).",
+        "Una orden en cualquier `estado` de negocio puede darse de baja.",
+      ],
+      respuesta: ["`204 No Content`, sin cuerpo."],
+      errores: [
+        ["`NOT_FOUND`", "404", "No existe una orden vigente con ese identificador."],
+        ["`VALIDATION_ERROR`", "400", "El identificador no es un entero positivo."],
+      ],
+      fuente: "`app/api/v1/ordenes/[id]/route.ts`",
+      criterios: [
+        "Dada una orden vigente, al darla de baja la respuesta es 204 sin cuerpo.",
+        "Tras la baja, `GET /ordenes/{id}` sobre esa orden responde 404, y deja de aparecer en RF-G7-01.",
+      ],
+    },
   ],
 
   web: {
@@ -177,6 +233,7 @@ export const grupo = {
     notas: [
       "El formulario convierte a número la cantidad y el precio antes de enviarlos, de modo que el error por enviarlos como texto solo puede provocarse llamando la API directamente.",
       "El total de la compra no se edita en la pantalla: se ve recién en el detalle, ya calculado por el servidor.",
+      "No hay pantalla de edición ni baja: `PUT` y `DELETE /ordenes/{id}` (RF-G7-04/05) solo se pueden ejercitar llamando la API directamente.",
     ],
   },
 
@@ -224,5 +281,7 @@ export const grupo = {
     "El campo `producto` de la cabecera duplica el primer ítem, lo que puede inducir a error cuando la compra tiene varios productos distintos.",
     "No existen descuentos, impuestos ni costos de envío en el cálculo del total.",
     "El listado de órdenes está limitado a 100 registros sin paginación.",
+    "`PUT /ordenes/{id}` recalcula `producto`/`monto` de la cabecera pero nunca toca `items_orden`: tras un reemplazo, el detalle de ítems que devuelve `GET /ordenes/{id}` queda desincronizado del nuevo monto.",
+    "Dar de baja una orden (`DELETE`) no borra ni marca sus `items_orden`, que quedan huérfanos e inaccesibles desde la API.",
   ],
 };

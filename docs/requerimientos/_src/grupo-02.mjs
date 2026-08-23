@@ -5,15 +5,21 @@ export const grupo = {
   modulo: "Módulo: Transferencias internas (mismo banco)",
 
   alcance:
-    "Cubre la consulta de las cuentas de un titular y el registro de transferencias internas entre dos cuentas del sandbox. La transferencia se registra como una instrucción en estado `pendiente`: queda asentada con su importe, sus cuentas y su descripción, y puede consultarse por su identificador.",
+    "Cubre el CRUD completo de cuentas y de transferencias internas entre dos cuentas del sandbox. La transferencia se registra como una instrucción en estado `pendiente`: queda asentada con su importe, sus cuentas y su descripción, y puede consultarse, reemplazarse o darse de baja por su identificador.",
   fueraDeAlcance:
     "Liquidación de la transferencia: el sandbox no descuenta ni acredita saldos, no valida fondos disponibles ni el estado de las cuentas, y no expone endpoints de confirmación, rechazo o reversa. Tampoco hay transferencias a otras entidades ni conversión de moneda.",
 
   endpoints: [
-    { ruta: "GET /api/v1/cuentas", rf: "RF-G2-01", desc: "Lista cuentas, opcionalmente filtradas por titular." },
+    { ruta: "GET /api/v1/cuentas", rf: "RF-G2-01", desc: "Lista cuentas activas, opcionalmente filtradas por titular." },
+    { ruta: "POST /api/v1/cuentas", rf: "RF-G2-05", desc: "Crea una cuenta para un titular (saldo inicial 0)." },
     { ruta: "GET /api/v1/cuentas/{id}", rf: "RF-G2-02", desc: "Devuelve el detalle de una cuenta." },
+    { ruta: "PUT /api/v1/cuentas/{id}", rf: "RF-G2-06", desc: "Reemplaza tipo y moneda de una cuenta." },
+    { ruta: "DELETE /api/v1/cuentas/{id}", rf: "RF-G2-07", desc: "Da de baja (soft-delete) una cuenta." },
+    { ruta: "GET /api/v1/transferencias", rf: "RF-G2-08", desc: "Lista transferencias activas, por cuenta de origen o destino." },
     { ruta: "POST /api/v1/transferencias", rf: "RF-G2-03", desc: "Registra una transferencia entre dos cuentas." },
     { ruta: "GET /api/v1/transferencias/{id}", rf: "RF-G2-04", desc: "Devuelve el detalle de una transferencia." },
+    { ruta: "PUT /api/v1/transferencias/{id}", rf: "RF-G2-09", desc: "Reemplaza cuentas, importe y descripción de una transferencia." },
+    { ruta: "DELETE /api/v1/transferencias/{id}", rf: "RF-G2-10", desc: "Da de baja (soft-delete) una transferencia." },
   ],
 
   precondiciones: [
@@ -24,15 +30,15 @@ export const grupo = {
   tablas: [
     {
       nombre: "cuentas",
-      desc: "Cuentas de los titulares. Este módulo solo las lee: ningún endpoint modifica el saldo.",
+      desc: "Cuentas de los titulares. Ningún endpoint modifica el saldo; `numero_cuenta` lo genera la API al crear la cuenta.",
       columnas: [
         ["`id`", "`bigserial`, clave primaria"],
         ["`usuario_id`", "`bigint`, obligatorio, referencia a `usuarios(id)`"],
-        ["`numero_cuenta`", "`text`, obligatorio y único"],
+        ["`numero_cuenta`", "`text`, obligatorio y único; lo genera `POST /cuentas` al azar (10 dígitos)"],
         ["`tipo_cuenta`", "`text`, `ahorro` o `corriente` (por defecto `ahorro`)"],
         ["`moneda`", "`text`, `PYG` o `USD` (por defecto `PYG`)"],
-        ["`saldo`", "`numeric(14,2)`, obligatorio, por defecto 0"],
-        ["`activa`", "`boolean`, obligatorio, por defecto `true`"],
+        ["`saldo`", "`numeric(14,2)`, obligatorio, por defecto 0; ningún endpoint lo modifica"],
+        ["`activa`", "`boolean`, obligatorio, por defecto `true`; la usan `GET`/`PUT`/`DELETE` para filtrar/operar"],
         ["`created_at`", "`timestamptz`, por defecto `now()`"],
       ],
     },
@@ -50,6 +56,7 @@ export const grupo = {
         ["`descripcion`", "`text`, opcional"],
         ["`estado`", "`text`, uno de `pendiente` / `completada` / `rechazada`; por defecto `pendiente`"],
         ["`created_at`", "`timestamptz`, por defecto `now()`"],
+        ["`activo`", "`boolean`, obligatorio, por defecto `true`; lo usan `GET`/`PUT`/`DELETE` para filtrar/operar"],
       ],
     },
   ],
@@ -68,8 +75,9 @@ export const grupo = {
         "`usuarioId` (opcional, por query): número entero positivo. Se envía como texto en la URL y el sistema lo convierte.",
       ],
       reglas: [
-        "Con `usuarioId`, devuelve todas las cuentas de ese titular ordenadas por identificador ascendente, sin límite de cantidad.",
-        "Sin `usuarioId`, devuelve las primeras 100 cuentas del sandbox ordenadas por identificador ascendente.",
+        "Devuelve únicamente cuentas con `activa = true`; una dada de baja con RF-G2-07 deja de aparecer.",
+        "Con `usuarioId`, devuelve todas las cuentas activas de ese titular ordenadas por identificador ascendente, sin límite de cantidad.",
+        "Sin `usuarioId`, devuelve las primeras 100 cuentas activas del sandbox ordenadas por identificador ascendente.",
         "Un titular sin cuentas, o un `usuarioId` inexistente, devuelve una lista vacía y no un error.",
         "No hay paginación: el resultado sin filtro está acotado por el tope fijo de 100 registros.",
       ],
@@ -97,7 +105,7 @@ export const grupo = {
       entradas: ["`id` (obligatorio, en la ruta): número entero positivo."],
       reglas: [
         "Devuelve la cuenta cuyo identificador coincide exactamente.",
-        "Si no existe, responde 404 con el mensaje \"Cuenta no encontrada.\".",
+        "Si no existe o ya está dada de baja (`activa = false`), responde 404 con el mensaje \"Cuenta no encontrada.\".",
         "El identificador de la ruta tiene prioridad sobre cualquier `id` enviado por query o en el cuerpo.",
       ],
       respuesta: ["`200 OK` con `data` conteniendo la cuenta completa."],
@@ -136,16 +144,19 @@ export const grupo = {
         "`201 Created` con `data` conteniendo la transferencia creada: `id`, cuentas, `monto`, `descripcion`, `estado` (`pendiente`) y `created_at`.",
       ],
       errores: [
-        ["`VALIDATION_ERROR`", "400", "Falta un campo obligatorio, el importe no es positivo o un identificador no es entero positivo."],
-        ["`EXECUTION_ERROR`", "400", "La cuenta de origen o de destino no existe, o ambas son la misma cuenta."],
+        [
+          "`VALIDATION_ERROR`",
+          "400",
+          "Falta un campo obligatorio, el importe no es positivo, un identificador no es entero positivo, la cuenta de origen o de destino no existe, o ambas son la misma cuenta.",
+        ],
       ],
       fuente: "`app/api/v1/transferencias/route.ts` y las restricciones de `scripts/setup-db.sql`",
       criterios: [
         "Dadas dos cuentas distintas existentes, al registrar una transferencia válida la respuesta es 201 y `data.estado` es `pendiente`.",
         "Después de registrar la transferencia, el saldo de la cuenta de origen consultado con RF-G2-02 es el mismo que antes de la operación.",
-        "Al registrar una transferencia con la misma cuenta como origen y destino, la respuesta es 400 `EXECUTION_ERROR`.",
+        "Al registrar una transferencia con la misma cuenta como origen y destino, la respuesta es 400 `VALIDATION_ERROR` (viola la restricción `CHECK` de la tabla).",
         "Al registrar una transferencia con importe cero o negativo, la respuesta es 400 `VALIDATION_ERROR`.",
-        "Al registrar una transferencia contra una cuenta de destino inexistente, la respuesta es 400 `EXECUTION_ERROR` y ninguna transferencia queda registrada.",
+        "Al registrar una transferencia contra una cuenta de destino inexistente, la respuesta es 400 `VALIDATION_ERROR` (viola la clave foránea) y ninguna transferencia queda registrada.",
         "Al registrar una transferencia por un importe mayor al saldo de la cuenta de origen, la respuesta es 201: el sandbox no controla fondos.",
         "La transferencia recién creada puede consultarse con RF-G2-04 usando el `id` devuelto.",
       ],
@@ -159,7 +170,7 @@ export const grupo = {
       entradas: ["`id` (obligatorio, en la ruta): número entero positivo."],
       reglas: [
         "Devuelve la transferencia cuyo identificador coincide exactamente.",
-        "Si no existe, responde 404 con el mensaje \"Transferencia no encontrada.\".",
+        "Si no existe o ya está dada de baja (`activo = false`), responde 404 con el mensaje \"Transferencia no encontrada.\".",
         "El estado devuelto es siempre `pendiente` para las transferencias creadas por la API; los datos sembrados incluyen además ejemplos en `completada` y `rechazada`.",
       ],
       respuesta: ["`200 OK` con `data` conteniendo la transferencia completa."],
@@ -172,6 +183,163 @@ export const grupo = {
         "Dada una transferencia recién registrada, al consultarla la respuesta es 200 y su `monto` y cuentas coinciden con los enviados al crearla.",
         "Al consultar una transferencia inexistente, la respuesta es 404 `NOT_FOUND` con el mensaje \"Transferencia no encontrada.\".",
         "Consultar dos veces la misma transferencia devuelve exactamente el mismo estado: no hay procesamiento diferido que lo cambie.",
+      ],
+    },
+    {
+      id: "RF-G2-05",
+      nombre: "Crear una cuenta",
+      endpoint: "POST /api/v1/cuentas",
+      descripcion: "Crea una cuenta nueva para un titular, con saldo inicial cero y número de cuenta generado por el sistema.",
+      entradas: [
+        "`usuarioId` (obligatorio): número entero positivo del titular.",
+        "`tipoCuenta` (obligatorio): `ahorro` o `corriente`.",
+        "`moneda` (obligatorio): `PYG` o `USD`.",
+      ],
+      reglas: [
+        "El `numeroCuenta` no lo envía el cliente: lo genera el servidor al azar (10 dígitos) y debe ser único en todo el sandbox.",
+        "La cuenta se crea siempre con `saldo = 0` y `activa = true`.",
+        "El titular debe existir: un `usuarioId` inexistente falla como error de ejecución por violación de clave foránea.",
+        "En la práctica improbable de que el número generado colisione con uno existente, la base rechaza el INSERT por violación de unicidad (`409 CONFLICT`); no hay reintento automático.",
+      ],
+      respuesta: ["`201 Created` con `data` conteniendo la cuenta creada."],
+      errores: [
+        ["`VALIDATION_ERROR`", "400", "Falta un campo obligatorio, `tipoCuenta`/`moneda` tienen un valor fuera de la lista permitida, o el `usuarioId` indicado no existe."],
+        ["`CONFLICT`", "409", "El número de cuenta generado al azar ya existía (caso extremadamente improbable)."],
+      ],
+      fuente: "`app/api/v1/cuentas/route.ts`",
+      criterios: [
+        "Al crear una cuenta para un titular existente, la respuesta es 201, `data.saldo` es `0` y `data.activa` es verdadero.",
+        "La cuenta creada aparece de inmediato en el listado de RF-G2-01 filtrando por ese titular.",
+        "Al crear con `moneda=EUR`, la respuesta es 400 `VALIDATION_ERROR`.",
+        "Al crear para un `usuarioId` inexistente, la respuesta es 400 `VALIDATION_ERROR`.",
+      ],
+    },
+    {
+      id: "RF-G2-06",
+      nombre: "Reemplazar una cuenta",
+      endpoint: "PUT /api/v1/cuentas/{id}",
+      descripcion: "Reemplaza el tipo y la moneda de una cuenta existente. El número de cuenta y el saldo quedan fuera de este reemplazo.",
+      entradas: [
+        "`id` (obligatorio, en la ruta): número entero positivo.",
+        "`tipoCuenta` (obligatorio): `ahorro` o `corriente`.",
+        "`moneda` (obligatorio): `PYG` o `USD`.",
+      ],
+      reglas: [
+        "Solo puede reemplazar una cuenta con `activa = true`; una dada de baja responde 404.",
+        "`numeroCuenta` y `saldo` no forman parte del cuerpo: no pueden reemplazarse por esta vía.",
+      ],
+      respuesta: ["`200 OK` con `data` conteniendo la cuenta ya actualizada."],
+      errores: [
+        ["`NOT_FOUND`", "404", "No existe una cuenta vigente con ese identificador."],
+        ["`VALIDATION_ERROR`", "400", "Falta un campo obligatorio o tiene un valor fuera de la lista permitida."],
+      ],
+      fuente: "`app/api/v1/cuentas/[id]/route.ts`",
+      criterios: [
+        "Dada una cuenta existente, al cambiar su `tipoCuenta` la respuesta es 200 y el cambio se refleja al volver a consultarla.",
+        "El `numeroCuenta` y el `saldo` de la cuenta no cambian tras el reemplazo.",
+        "Al reemplazar una cuenta inexistente o dada de baja, la respuesta es 404 `NOT_FOUND`.",
+      ],
+    },
+    {
+      id: "RF-G2-07",
+      nombre: "Dar de baja una cuenta",
+      endpoint: "DELETE /api/v1/cuentas/{id}",
+      descripcion: "Da de baja lógica una cuenta, quitándola de los listados y consultas por id.",
+      entradas: ["`id` (obligatorio, en la ruta): número entero positivo."],
+      reglas: [
+        "Marca `activa = false`; la fila permanece en la base, nunca se borra físicamente.",
+        "No verifica si la cuenta tiene transferencias activas asociadas: una cuenta con transferencias vigentes puede darse de baja igual, y esas transferencias siguen existiendo y siendo consultables por su propio id.",
+      ],
+      respuesta: ["`204 No Content`, sin cuerpo."],
+      errores: [
+        ["`NOT_FOUND`", "404", "No existe una cuenta vigente con ese identificador."],
+        ["`VALIDATION_ERROR`", "400", "El identificador no es un entero positivo."],
+      ],
+      fuente: "`app/api/v1/cuentas/[id]/route.ts`",
+      criterios: [
+        "Dada una cuenta vigente, al darla de baja la respuesta es 204 sin cuerpo.",
+        "Tras la baja, `GET /cuentas/{id}` sobre esa cuenta responde 404, y deja de aparecer en el listado de RF-G2-01.",
+        "Dar de baja una cuenta con transferencias existentes no afecta la consulta de esas transferencias por su propio id.",
+      ],
+    },
+    {
+      id: "RF-G2-08",
+      nombre: "Listar transferencias",
+      endpoint: "GET /api/v1/transferencias",
+      descripcion:
+        "Devuelve las transferencias del sandbox, con la posibilidad de filtrar por cuenta de origen o de destino.",
+      entradas: [
+        "`cuentaOrigenId` (opcional, por query): número entero positivo.",
+        "`cuentaDestinoId` (opcional, por query): número entero positivo.",
+      ],
+      reglas: [
+        "Devuelve únicamente transferencias con `activo = true`.",
+        "Los dos filtros no se combinan entre sí: si se envía `cuentaOrigenId`, se ignora `cuentaDestinoId` (y viceversa); solo el primero que la ruta evalúa (`cuentaOrigenId`) tiene efecto cuando ambos están presentes.",
+        "Sin ningún filtro, devuelve las primeras 100 transferencias del sandbox ordenadas por identificador ascendente.",
+      ],
+      respuesta: ["`200 OK` con `data` como arreglo de transferencias."],
+      errores: [
+        ["`VALIDATION_ERROR`", "400", "Alguno de los filtros está presente pero no es un entero positivo."],
+        ["`UNAUTHORIZED`", "401", "Falta la API key o es inválida."],
+      ],
+      fuente: "`app/api/v1/transferencias/route.ts`",
+      criterios: [
+        "Al listar filtrando por `cuentaOrigenId`, todos los elementos devueltos tienen esa cuenta como origen.",
+        "Al listar filtrando por `cuentaDestinoId`, todos los elementos devueltos tienen esa cuenta como destino.",
+        "Al enviar ambos filtros a la vez, el resultado corresponde solo a `cuentaOrigenId`, no a la intersección de ambos.",
+        "Una transferencia dada de baja con RF-G2-10 deja de aparecer en este listado.",
+      ],
+    },
+    {
+      id: "RF-G2-09",
+      nombre: "Reemplazar una transferencia",
+      endpoint: "PUT /api/v1/transferencias/{id}",
+      descripcion:
+        "Reemplaza las cuentas, el importe y la descripción de una transferencia existente. El estado queda fuera de este reemplazo.",
+      entradas: [
+        "`id` (obligatorio, en la ruta): número entero positivo.",
+        "`cuentaOrigenId` (obligatorio): número entero positivo.",
+        "`cuentaDestinoId` (obligatorio): número entero positivo.",
+        "`monto` (obligatorio): número mayor que cero.",
+        "`descripcion` (opcional): texto libre.",
+      ],
+      reglas: [
+        "Solo puede reemplazar una transferencia con `activo = true`; una dada de baja responde 404.",
+        "`estado` no forma parte del cuerpo: no hay forma de mover una transferencia de `pendiente` a otro estado por esta vía (no existe ningún endpoint que lo haga).",
+        "Las mismas restricciones de la creación aplican aquí: cuentas existentes, destino distinto del origen, importe positivo.",
+      ],
+      respuesta: ["`200 OK` con `data` conteniendo la transferencia ya actualizada."],
+      errores: [
+        ["`NOT_FOUND`", "404", "No existe una transferencia vigente con ese identificador."],
+        ["`VALIDATION_ERROR`", "400", "Falta un campo obligatorio, el importe no es positivo, alguna cuenta no existe, o ambas cuentas son la misma."],
+      ],
+      fuente: "`app/api/v1/transferencias/[id]/route.ts`",
+      criterios: [
+        "Dada una transferencia existente, al reemplazar su `monto` la respuesta es 200 y el nuevo importe se refleja al consultarla.",
+        "El `estado` de la transferencia no cambia por este reemplazo.",
+        "Al reemplazar con la misma cuenta como origen y destino, la respuesta es 400 `VALIDATION_ERROR`.",
+        "Al reemplazar una transferencia inexistente o dada de baja, la respuesta es 404 `NOT_FOUND`.",
+      ],
+    },
+    {
+      id: "RF-G2-10",
+      nombre: "Dar de baja una transferencia",
+      endpoint: "DELETE /api/v1/transferencias/{id}",
+      descripcion: "Da de baja lógica una transferencia, quitándola de los listados y consultas por id.",
+      entradas: ["`id` (obligatorio, en la ruta): número entero positivo."],
+      reglas: [
+        "Marca `activo = false`; la fila permanece en la base, nunca se borra físicamente.",
+        "No cambia el `estado` de la transferencia (sigue en `pendiente` u otro valor sembrado): dar de baja y cambiar de estado son cosas distintas.",
+      ],
+      respuesta: ["`204 No Content`, sin cuerpo."],
+      errores: [
+        ["`NOT_FOUND`", "404", "No existe una transferencia vigente con ese identificador."],
+        ["`VALIDATION_ERROR`", "400", "El identificador no es un entero positivo."],
+      ],
+      fuente: "`app/api/v1/transferencias/[id]/route.ts`",
+      criterios: [
+        "Dada una transferencia vigente, al darla de baja la respuesta es 204 sin cuerpo.",
+        "Tras la baja, `GET /transferencias/{id}` sobre esa transferencia responde 404, y deja de aparecer en RF-G2-08.",
       ],
     },
   ],
@@ -245,5 +413,8 @@ export const grupo = {
     "El estado `completada` y `rechazada` solo aparece en los datos sembrados: la API nunca los produce.",
     "No hay límites por operación ni por período, ni control de duplicados (dos transferencias idénticas seguidas son aceptadas).",
     "El listado de cuentas sin filtro está limitado a 100 registros sin paginación ni indicación de que hubo recorte.",
+    "`GET /transferencias` no combina `cuentaOrigenId` y `cuentaDestinoId`: si se envían ambos, solo se aplica el primero.",
+    "Dar de baja una cuenta no verifica ni bloquea sus transferencias asociadas; tampoco existe cascada de baja entre ambas tablas.",
+    "`PUT /transferencias/{id}` no permite tocar el `estado`, y sigue sin existir ningún endpoint que mueva una transferencia de `pendiente` a `completada` o `rechazada`.",
   ],
 };
