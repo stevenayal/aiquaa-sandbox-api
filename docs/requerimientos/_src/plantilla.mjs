@@ -273,6 +273,8 @@ ${g.rf.map(bloqueRf).join("")}
 <h2>5. Reglas transversales de la API</h2>
 <p>${md(comun.transversalIntro)}</p>
 ${lista(comun.transversales)}
+<h3>Códigos de éxito</h3>
+${tabla(["Status", "Cuándo ocurre"], comun.statusExito)}
 <h3>Códigos de error</h3>
 ${tabla(["Código", "HTTP", "Significado"], comun.errores)}
 

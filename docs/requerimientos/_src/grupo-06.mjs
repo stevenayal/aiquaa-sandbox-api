@@ -10,8 +10,11 @@ export const grupo = {
     "Envío efectivo del mensaje, reintentos ante fallo, plantillas, programación diferida, preferencias de contacto del titular y baja de suscripción.",
 
   endpoints: [
-    { ruta: "GET /api/v1/notificaciones", rf: "RF-G6-01", desc: "Lista notificaciones con filtros por titular y por leídas / no leídas." },
+    { ruta: "GET /api/v1/notificaciones", rf: "RF-G6-01", desc: "Lista notificaciones activas con filtros por titular y por leídas / no leídas." },
     { ruta: "POST /api/v1/notificaciones", rf: "RF-G6-02", desc: "Crea una notificación y la deja como enviada." },
+    { ruta: "GET /api/v1/notificaciones/{id}", rf: "RF-G6-04", desc: "Devuelve el detalle de una notificación." },
+    { ruta: "PUT /api/v1/notificaciones/{id}", rf: "RF-G6-05", desc: "Reemplaza canal, asunto y mensaje de una notificación." },
+    { ruta: "DELETE /api/v1/notificaciones/{id}", rf: "RF-G6-06", desc: "Da de baja (soft-delete) una notificación." },
     { ruta: "PATCH /api/v1/notificaciones/{id}/leer", rf: "RF-G6-03", desc: "Marca una notificación como leída." },
   ],
 
@@ -33,6 +36,7 @@ export const grupo = {
         ["`leido`", "`boolean`, obligatorio, por defecto `false`"],
         ["`estado`", "`text`, uno de `enviada` / `fallida` / `pendiente`; por defecto `enviada`"],
         ["`created_at`", "`timestamptz`, por defecto `now()`"],
+        ["`activo`", "`boolean`, obligatorio, por defecto `true`; lo usan `GET`/`PUT`/`DELETE` para filtrar/operar"],
       ],
     },
   ],
@@ -52,6 +56,7 @@ export const grupo = {
         "`leido` (opcional, por query): exactamente el texto `true` o el texto `false`. No se aceptan otras formas de expresar el valor booleano (`1`, `0`, `sí`, `no`).",
       ],
       reglas: [
+        "Devuelve únicamente notificaciones con `activo = true`; una dada de baja con RF-G6-06 deja de aparecer.",
         "Los dos filtros son opcionales y se combinan con Y lógico.",
         "El filtro de lectura acepta únicamente los textos `true` y `false`; cualquier otro valor es rechazado como error de validación, en lugar de interpretarse como verdadero.",
         "El resultado se ordena por identificador ascendente y está limitado a 100 registros.",
@@ -95,8 +100,7 @@ export const grupo = {
       ],
       respuesta: ["`201 Created` con `data` conteniendo la notificación creada."],
       errores: [
-        ["`VALIDATION_ERROR`", "400", "Falta un campo obligatorio, `canal` no está permitido, o asunto o mensaje están vacíos."],
-        ["`EXECUTION_ERROR`", "400", "El destinatario indicado no existe."],
+        ["`VALIDATION_ERROR`", "400", "Falta un campo obligatorio, `canal` no está permitido, asunto/mensaje están vacíos, o el destinatario indicado no existe."],
       ],
       fuente: "`app/api/v1/notificaciones/route.ts`",
       criterios: [
@@ -104,8 +108,79 @@ export const grupo = {
         "La notificación recién creada aparece en el listado del titular filtrando por `leido=false`.",
         "Al crear con `canal=whatsapp`, la respuesta es 400 `VALIDATION_ERROR`.",
         "Al crear con `asunto` vacío, la respuesta es 400 `VALIDATION_ERROR`.",
-        "Al crear para un `usuarioId` inexistente, la respuesta es 400 `EXECUTION_ERROR` y no se registra ninguna notificación.",
+        "Al crear para un `usuarioId` inexistente, la respuesta es 400 `VALIDATION_ERROR` y no se registra ninguna notificación.",
         "Al crear dos notificaciones idénticas seguidas, ambas son aceptadas y se registran por separado: no hay control de duplicados.",
+      ],
+    },
+    {
+      id: "RF-G6-04",
+      nombre: "Consultar una notificación",
+      endpoint: "GET /api/v1/notificaciones/{id}",
+      descripcion: "Devuelve el detalle de una notificación puntual.",
+      entradas: ["`id` (obligatorio, en la ruta): número entero positivo."],
+      reglas: [
+        "Devuelve la notificación cuyo identificador coincide exactamente, siempre que siga `activo = true`.",
+        "Si no existe o ya está dada de baja, responde 404 con el mensaje \"Notificación no encontrada.\".",
+      ],
+      respuesta: ["`200 OK` con `data` conteniendo la notificación completa."],
+      errores: [
+        ["`NOT_FOUND`", "404", "No existe una notificación vigente con ese identificador."],
+        ["`VALIDATION_ERROR`", "400", "El identificador no es un entero positivo."],
+      ],
+      fuente: "`app/api/v1/notificaciones/[id]/route.ts`",
+      criterios: [
+        "Dada una notificación existente, al consultarla por su `id` la respuesta es 200 y los datos coinciden con los de la creación.",
+        "Al consultar una notificación inexistente o dada de baja, la respuesta es 404 `NOT_FOUND`.",
+      ],
+    },
+    {
+      id: "RF-G6-05",
+      nombre: "Reemplazar una notificación",
+      endpoint: "PUT /api/v1/notificaciones/{id}",
+      descripcion:
+        "Reemplaza el canal, el asunto y el mensaje de una notificación existente. La condición de lectura y el estado de envío quedan fuera de este reemplazo.",
+      entradas: [
+        "`id` (obligatorio, en la ruta): número entero positivo.",
+        "`canal` (obligatorio): uno de `push`, `email`, `sms`.",
+        "`asunto` (obligatorio): texto no vacío.",
+        "`mensaje` (obligatorio): texto no vacío.",
+      ],
+      reglas: [
+        "Solo puede reemplazar una notificación con `activo = true`; una dada de baja responde 404.",
+        "`leido` y `estado` no forman parte del cuerpo: marcar como leída sigue siendo exclusivo de RF-G6-03.",
+        "Reemplazar una notificación ya leída no la vuelve a marcar como no leída.",
+      ],
+      respuesta: ["`200 OK` con `data` conteniendo la notificación ya actualizada."],
+      errores: [
+        ["`NOT_FOUND`", "404", "No existe una notificación vigente con ese identificador."],
+        ["`VALIDATION_ERROR`", "400", "Falta un campo obligatorio, o `canal` tiene un valor fuera de la lista permitida."],
+      ],
+      fuente: "`app/api/v1/notificaciones/[id]/route.ts`",
+      criterios: [
+        "Dada una notificación existente, al reemplazar su `mensaje` la respuesta es 200 y el cambio se refleja al consultarla.",
+        "El campo `leido` de una notificación ya leída no cambia al reemplazarla.",
+        "Al reemplazar una notificación inexistente o dada de baja, la respuesta es 404 `NOT_FOUND`.",
+      ],
+    },
+    {
+      id: "RF-G6-06",
+      nombre: "Dar de baja una notificación",
+      endpoint: "DELETE /api/v1/notificaciones/{id}",
+      descripcion: "Da de baja lógica una notificación, quitándola de los listados y consultas por id.",
+      entradas: ["`id` (obligatorio, en la ruta): número entero positivo."],
+      reglas: [
+        "Marca `activo = false`; la fila permanece en la base, nunca se borra físicamente.",
+        "Una notificación ya leída también puede darse de baja.",
+      ],
+      respuesta: ["`204 No Content`, sin cuerpo."],
+      errores: [
+        ["`NOT_FOUND`", "404", "No existe una notificación vigente con ese identificador."],
+        ["`VALIDATION_ERROR`", "400", "El identificador no es un entero positivo."],
+      ],
+      fuente: "`app/api/v1/notificaciones/[id]/route.ts`",
+      criterios: [
+        "Dada una notificación vigente, al darla de baja la respuesta es 204 sin cuerpo.",
+        "Tras la baja, `GET /notificaciones/{id}` sobre esa notificación responde 404, y deja de aparecer en RF-G6-01.",
       ],
     },
     {
@@ -121,7 +196,8 @@ export const grupo = {
         "**No se verifica quién marca la lectura:** cualquier portador de una API key válida puede marcar como leída una notificación de cualquier titular.",
         "No existe la operación inversa: una vez leída, la notificación no puede volver a marcarse como no leída por API.",
         "No se registra la fecha de lectura, solo el hecho de que fue leída.",
-        "Si la notificación no existe, responde 404 y no modifica nada.",
+        "**No filtra por `activo`:** a diferencia de `GET`/`PUT`/`DELETE`, este endpoint no se tocó al agregar el CRUD, así que puede marcar como leída una notificación ya dada de baja con RF-G6-06, aunque esa notificación ya no aparezca en ningún listado.",
+        "Si la notificación no existe (ID inexistente), responde 404 y no modifica nada.",
       ],
       respuesta: ["`200 OK` con `data` conteniendo la notificación ya marcada como leída."],
       errores: [
@@ -157,6 +233,7 @@ export const grupo = {
     notas: [
       "El filtro de lectura de la pantalla ofrece tres opciones (todas, leídas, no leídas) y envía exactamente los textos `true` y `false` que acepta la API.",
       "Marcar una notificación como leída refresca la bandeja, por lo que la fila cambia de estado sin recargar la página.",
+      "No hay pantalla de detalle, edición ni baja individual: `GET`, `PUT` y `DELETE /notificaciones/{id}` (RF-G6-04/05/06) solo se pueden ejercitar llamando la API directamente.",
     ],
   },
 
@@ -205,5 +282,6 @@ export const grupo = {
     "No se puede desmarcar una notificación leída ni se registra la fecha de lectura.",
     "Ninguna operación de negocio del sandbox genera notificaciones automáticas.",
     "El listado está limitado a 100 registros sin paginación.",
+    "`PATCH .../leer` no filtra por `activo`: puede marcar como leída una notificación ya dada de baja con `DELETE`.",
   ],
 };
