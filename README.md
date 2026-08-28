@@ -259,6 +259,16 @@ Importa [`postman_collection.json`](./postman_collection.json), configura las va
 colección `baseUrl` y `apiKey`, y corre los ejemplos: las carpetas `Grupo N - ...` (sandbox de
 SQL crudo) y las carpetas `REST - Grupo N - ...` (endpoints REST fijos).
 
+La carpeta `E2E - Flujos con validacion SQL` muestra el patrón de automatización end-to-end
+para practicar: cada request usa el **Pre-request Script** para consultar `/api/v1/sql/select`
+(solo lectura) y validar el estado previo en la base, y el **Tests Script** (post-response)
+para volver a consultar la base y confirmar que el INSERT/UPDATE realmente quedó persistido —
+no solo que el endpoint respondió bien. No introduce variables de entorno nuevas: reutiliza
+`{{baseUrl}}`/`{{apiKey}}` y usa `pm.variables` (efímeras, viven solo durante la ejecución del
+request) para pasar datos entre el pre-request y el test. Corre con los ids de
+`scripts/seed-data.sql` tal cual vienen del seed; es la plantilla a copiar para automatizar el
+resto de los 29 endpoints.
+
 ## Tablas de práctica (`qa_training`)
 
 Las 15 tablas cubren los 10 módulos del curso (`inscripcion-grupos-bdd2.xlsx`); cada grupo
