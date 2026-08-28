@@ -2169,6 +2169,366 @@
       ]
     },
     {
+      "name": "E2E - Flujos con validacion SQL",
+      "description": "Plantilla de automatizacion end-to-end: cada request de esta carpeta usa el Pre-request Script para validar en la BD (via /api/v1/sql/select, solo lectura) que los datos de prueba estan en el estado esperado ANTES de ejecutar la operacion REST, y el Tests Script (post-response) para volver a consultar la BD y confirmar que el INSERT/UPDATE quedo realmente persistido, no solo que el endpoint respondio bien. No agrega variables de coleccion ni de entorno nuevas: reutiliza {{baseUrl}}/{{apiKey}} y usa pm.variables (efimeras, solo durante la ejecucion del request) para pasar datos entre el pre-request y el test. Usa los mismos ids que ya trae scripts/seed-data.sql, asi que corre igual despues de un `npm run db:seed` limpio. Copien este patron para automatizar los demas endpoints del curso.",
+      "item": [
+        {
+          "name": "Crear transferencia (INSERT + validacion SQL)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cuentaOrigenId\": 1,\n  \"cuentaDestinoId\": 2,\n  \"monto\": 25000,\n  \"descripcion\": \"Pago de alquiler - E2E\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/transferencias",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "transferencias"
+              ]
+            },
+            "description": "INSERT simple. Pre-request: confirma que las cuentas 1 y 2 (seed) existen y estan activas. Post-request: relee la fila insertada y valida estado='pendiente' y los ids de cuenta."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Pre-request: valida que las cuentas origen y destino existan y esten",
+                  "// activas antes de intentar la transferencia (evita un POST que falle",
+                  "// por datos de prueba inconsistentes).",
+                  "const cuentaOrigenId = 1;",
+                  "const cuentaDestinoId = 2;",
+                  "pm.variables.set(\"cuentaOrigenId\", cuentaOrigenId);",
+                  "pm.variables.set(\"cuentaDestinoId\", cuentaDestinoId);",
+                  "",
+                  "pm.sendRequest({",
+                  "  url: pm.collectionVariables.get(\"baseUrl\") + \"/api/v1/sql/select\",",
+                  "  method: \"POST\",",
+                  "  header: {",
+                  "    \"Content-Type\": \"application/json\",",
+                  "    \"x-api-key\": pm.collectionVariables.get(\"apiKey\")",
+                  "  },",
+                  "  body: {",
+                  "    mode: \"raw\",",
+                  "    raw: JSON.stringify({",
+                  "      sql: \"SELECT id, activa FROM cuentas WHERE id IN ($1, $2)\",",
+                  "      params: [cuentaOrigenId, cuentaDestinoId]",
+                  "    })",
+                  "  }",
+                  "}, (err, res) => {",
+                  "  if (err) {",
+                  "    console.error(\"Pre-request SQL check fallo:\", err);",
+                  "    return;",
+                  "  }",
+                  "  const rows = res.json().data || [];",
+                  "  const origen = rows.find((r) => r.id === cuentaOrigenId);",
+                  "  const destino = rows.find((r) => r.id === cuentaDestinoId);",
+                  "  console.log(\"Cuenta origen activa?\", origen && origen.activa);",
+                  "  console.log(\"Cuenta destino activa?\", destino && destino.activa);",
+                  "});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 201 Created\", () => {",
+                  "  pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "const body = pm.response.json();",
+                  "pm.test(\"La respuesta trae la transferencia insertada con estado pendiente\", () => {",
+                  "  pm.expect(body).to.have.property(\"data\");",
+                  "  pm.expect(body.data).to.have.property(\"id\");",
+                  "  pm.expect(body.data.estado).to.eql(\"pendiente\");",
+                  "});",
+                  "",
+                  "const transferenciaId = body.data.id;",
+                  "",
+                  "// Post-request: vuelve a consultar la BD para confirmar que el INSERT",
+                  "// realmente quedo persistido (no solo que el endpoint respondio bien).",
+                  "pm.sendRequest({",
+                  "  url: pm.collectionVariables.get(\"baseUrl\") + \"/api/v1/sql/select\",",
+                  "  method: \"POST\",",
+                  "  header: {",
+                  "    \"Content-Type\": \"application/json\",",
+                  "    \"x-api-key\": pm.collectionVariables.get(\"apiKey\")",
+                  "  },",
+                  "  body: {",
+                  "    mode: \"raw\",",
+                  "    raw: JSON.stringify({",
+                  "      sql: \"SELECT id, cuenta_origen_id, cuenta_destino_id, estado FROM transferencias WHERE id = $1\",",
+                  "      params: [transferenciaId]",
+                  "    })",
+                  "  }",
+                  "}, (err, res) => {",
+                  "  pm.test(\"La BD confirma la fila insertada con estado 'pendiente'\", () => {",
+                  "    if (err) throw err;",
+                  "    const row = res.json().data[0];",
+                  "    pm.expect(row, \"no se encontro la transferencia en la BD\").to.not.be.undefined;",
+                  "    pm.expect(row.estado).to.eql(\"pendiente\");",
+                  "    pm.expect(Number(row.cuenta_origen_id)).to.eql(pm.variables.get(\"cuentaOrigenId\"));",
+                  "    pm.expect(Number(row.cuenta_destino_id)).to.eql(pm.variables.get(\"cuentaDestinoId\"));",
+                  "  });",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Pagar factura (UPDATE transaccional + validacion SQL)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"metodoPago\": \"tarjeta\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/facturas/3/pagar",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "facturas",
+                "3",
+                "pagar"
+              ]
+            },
+            "description": "UPDATE via endpoint de accion. Pre-request: confirma que la factura 3 (seed, Tigo) todavia no esta 'pagada'. Post-request: relee facturas + pagos y valida que el estado y el pago quedaron persistidos."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Pre-request: confirma que la factura todavia no esta pagada.",
+                  "// Si ya esta 'pagada', /pagar responde 404 (evita doble pago) y el",
+                  "// flujo fallaria \"sin motivo aparente\" si no se valida esto antes.",
+                  "const facturaId = 3;",
+                  "pm.variables.set(\"facturaId\", facturaId);",
+                  "",
+                  "pm.sendRequest({",
+                  "  url: pm.collectionVariables.get(\"baseUrl\") + \"/api/v1/sql/select\",",
+                  "  method: \"POST\",",
+                  "  header: {",
+                  "    \"Content-Type\": \"application/json\",",
+                  "    \"x-api-key\": pm.collectionVariables.get(\"apiKey\")",
+                  "  },",
+                  "  body: {",
+                  "    mode: \"raw\",",
+                  "    raw: JSON.stringify({",
+                  "      sql: \"SELECT id, estado FROM facturas WHERE id = $1\",",
+                  "      params: [facturaId]",
+                  "    })",
+                  "  }",
+                  "}, (err, res) => {",
+                  "  if (err) {",
+                  "    console.error(\"Pre-request SQL check fallo:\", err);",
+                  "    return;",
+                  "  }",
+                  "  const row = res.json().data[0];",
+                  "  console.log(\"Estado de la factura antes de pagar:\", row && row.estado);",
+                  "});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200 OK\", () => {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const body = pm.response.json();",
+                  "pm.test(\"La respuesta trae la factura pagada y el pago generado\", () => {",
+                  "  pm.expect(body.data.factura.estado).to.eql(\"pagada\");",
+                  "  pm.expect(body.data.pago).to.have.property(\"id\");",
+                  "});",
+                  "",
+                  "const facturaId = pm.variables.get(\"facturaId\");",
+                  "",
+                  "// Post-request: confirma en la BD que la factura quedo 'pagada' Y que",
+                  "// se genero la fila en 'pagos' (la operacion es transaccional, ver",
+                  "// app/api/v1/facturas/[id]/pagar/route.ts).",
+                  "pm.sendRequest({",
+                  "  url: pm.collectionVariables.get(\"baseUrl\") + \"/api/v1/sql/select\",",
+                  "  method: \"POST\",",
+                  "  header: {",
+                  "    \"Content-Type\": \"application/json\",",
+                  "    \"x-api-key\": pm.collectionVariables.get(\"apiKey\")",
+                  "  },",
+                  "  body: {",
+                  "    mode: \"raw\",",
+                  "    raw: JSON.stringify({",
+                  "      sql: \"SELECT f.estado AS factura_estado, p.estado AS pago_estado FROM facturas f JOIN pagos p ON p.factura_id = f.id WHERE f.id = $1 ORDER BY p.id DESC LIMIT 1\",",
+                  "      params: [facturaId]",
+                  "    })",
+                  "  }",
+                  "}, (err, res) => {",
+                  "  pm.test(\"La BD confirma factura pagada + pago registrado\", () => {",
+                  "    if (err) throw err;",
+                  "    const row = res.json().data[0];",
+                  "    pm.expect(row, \"no se encontro el pago en la BD\").to.not.be.undefined;",
+                  "    pm.expect(row.factura_estado).to.eql(\"pagada\");",
+                  "    pm.expect(row.pago_estado).to.eql(\"procesado\");",
+                  "  });",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Revocar rol de usuario (soft-delete + validacion SQL)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/usuarios/1/roles/1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "usuarios",
+                "1",
+                "roles",
+                "1"
+              ]
+            },
+            "description": "Soft-delete (UPDATE activo=false, qa_api no tiene grant de DELETE). Pre-request: confirma que el usuario 1 tiene el rol 1 activo (seed). Post-request: relee la fila y valida activo=false, en vez de esperar un 404."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Pre-request: confirma que el usuario tiene el rol activo antes de revocarlo.",
+                  "const usuarioId = 1;",
+                  "const roleId = 1;",
+                  "pm.variables.set(\"usuarioId\", usuarioId);",
+                  "pm.variables.set(\"roleId\", roleId);",
+                  "",
+                  "pm.sendRequest({",
+                  "  url: pm.collectionVariables.get(\"baseUrl\") + \"/api/v1/sql/select\",",
+                  "  method: \"POST\",",
+                  "  header: {",
+                  "    \"Content-Type\": \"application/json\",",
+                  "    \"x-api-key\": pm.collectionVariables.get(\"apiKey\")",
+                  "  },",
+                  "  body: {",
+                  "    mode: \"raw\",",
+                  "    raw: JSON.stringify({",
+                  "      sql: \"SELECT usuario_id, role_id, activo FROM usuario_roles WHERE usuario_id = $1 AND role_id = $2\",",
+                  "      params: [usuarioId, roleId]",
+                  "    })",
+                  "  }",
+                  "}, (err, res) => {",
+                  "  if (err) {",
+                  "    console.error(\"Pre-request SQL check fallo:\", err);",
+                  "    return;",
+                  "  }",
+                  "  const row = res.json().data[0];",
+                  "  console.log(\"Asignacion antes de revocar:\", row);",
+                  "});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 204 No Content\", () => {",
+                  "  pm.response.to.have.status(204);",
+                  "});",
+                  "",
+                  "const usuarioId = pm.variables.get(\"usuarioId\");",
+                  "const roleId = pm.variables.get(\"roleId\");",
+                  "",
+                  "// qa_api no tiene grant de DELETE (ver CLAUDE.md): revocar un rol es un",
+                  "// soft-delete (UPDATE activo = false), la fila sigue existiendo en la BD.",
+                  "pm.sendRequest({",
+                  "  url: pm.collectionVariables.get(\"baseUrl\") + \"/api/v1/sql/select\",",
+                  "  method: \"POST\",",
+                  "  header: {",
+                  "    \"Content-Type\": \"application/json\",",
+                  "    \"x-api-key\": pm.collectionVariables.get(\"apiKey\")",
+                  "  },",
+                  "  body: {",
+                  "    mode: \"raw\",",
+                  "    raw: JSON.stringify({",
+                  "      sql: \"SELECT activo FROM usuario_roles WHERE usuario_id = $1 AND role_id = $2\",",
+                  "      params: [usuarioId, roleId]",
+                  "    })",
+                  "  }",
+                  "}, (err, res) => {",
+                  "  pm.test(\"La BD confirma soft-delete: activo = false (la fila no se borro)\", () => {",
+                  "    if (err) throw err;",
+                  "    const row = res.json().data[0];",
+                  "    pm.expect(row, \"no se encontro la asignacion en la BD\").to.not.be.undefined;",
+                  "    pm.expect(row.activo).to.eql(false);",
+                  "  });",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
       "name": "Docs",
       "item": [
         {
