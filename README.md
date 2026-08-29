@@ -260,14 +260,26 @@ colección `baseUrl` y `apiKey`, y corre los ejemplos: las carpetas `Grupo N - .
 SQL crudo) y las carpetas `REST - Grupo N - ...` (endpoints REST fijos).
 
 La carpeta `E2E - Flujos con validacion SQL` muestra el patrón de automatización end-to-end
-para practicar: cada request usa el **Pre-request Script** para consultar `/api/v1/sql/select`
-(solo lectura) y validar el estado previo en la base, y el **Tests Script** (post-response)
-para volver a consultar la base y confirmar que el INSERT/UPDATE realmente quedó persistido —
-no solo que el endpoint respondió bien. No introduce variables de entorno nuevas: reutiliza
-`{{baseUrl}}`/`{{apiKey}}` y usa `pm.variables` (efímeras, viven solo durante la ejecución del
-request) para pasar datos entre el pre-request y el test. Corre con los ids de
-`scripts/seed-data.sql` tal cual vienen del seed; es la plantilla a copiar para automatizar el
-resto de los 29 endpoints.
+para practicar, con dos técnicas reutilizables:
+
+1. **Pre-request Script de la colección** (ícono de la colección → pestaña *Scripts* → *Pre-request
+   script*, no el de cada request): declara una sola vez el helper `utils.bodySqlRest(sql, params)`
+   que arma la llamada a `/api/v1/sql/select`, y el template base `transferenciaTemplate` para el
+   body de "Crear transferencia" — así ningún request repite ese bloque de código.
+2. **Template + mutación**: cada request de transferencias clona `transferenciaTemplate`, muta
+   un solo campo (`monto`, `cuentaOrigenId`, …) para armar su propio caso, y lo guarda en la
+   variable `transferenciaBody`, que el campo *Body* referencia como `{{transferenciaBody}}`.
+
+Sobre esa base, cada request usa su **Pre-request Script** para consultar la base (vía
+`/api/v1/sql/select`, solo lectura) y validar el estado previo, y su **Tests Script**
+(post-response) para volver a consultar la base y confirmar que el INSERT/UPDATE — o el
+rechazo, en los casos negativos — realmente quedó reflejado, no solo que el endpoint respondió
+bien. No introduce variables de entorno nuevas: reutiliza `{{baseUrl}}`/`{{apiKey}}`, suma solo
+2 variables de colección (`transferenciaTemplate`/`transferenciaBody`) y usa `pm.variables`
+(efímeras) para el resto. Corre con los ids de `scripts/seed-data.sql` tal cual vienen del seed;
+es la plantilla a copiar para automatizar el resto de los 29 endpoints. El PDF
+`docs/patron-postman-pre-post-request.pdf` explica el patrón paso a paso, componente por
+componente.
 
 ## Tablas de práctica (`qa_training`)
 

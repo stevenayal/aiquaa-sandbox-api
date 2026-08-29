@@ -4,6 +4,54 @@
     "description": "Colección de práctica para consumir el API sandbox del curso de Automatización de Pruebas de Software. Configura las variables `baseUrl` y `apiKey` antes de correr los requests.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Pre-request Script DE LA COLECCION (icono de la coleccion > pestaña",
+          "// \"Scripts\" > \"Pre-request script\"). Corre antes de CADA request de",
+          "// toda la coleccion, asi que es el lugar para declarar UNA sola vez",
+          "// helpers/valores que todos los requests van a reutilizar, en vez de",
+          "// repetirlos en el pre-request de cada item.",
+          "",
+          "// 1) Helper reusable para consultar la BD via el endpoint sandbox.",
+          "//    Arma el objeto que despues se le pasa a pm.sendRequest(...) para",
+          "//    correr un SELECT de solo lectura contra qa_training.",
+          "if (typeof utils === \"undefined\") {",
+          "  utils = {",
+          "    bodySqlRest: function (sql, params) {",
+          "      return {",
+          "        url: pm.collectionVariables.get(\"baseUrl\") + \"/api/v1/sql/select\",",
+          "        method: \"POST\",",
+          "        header: {",
+          "          \"Content-Type\": \"application/json\",",
+          "          \"x-api-key\": pm.collectionVariables.get(\"apiKey\")",
+          "        },",
+          "        body: {",
+          "          mode: \"raw\",",
+          "          raw: JSON.stringify({ sql: sql, params: params || [] })",
+          "        }",
+          "      };",
+          "    }",
+          "  };",
+          "}",
+          "",
+          "// 2) Template base del body de \"Crear transferencia\". Se recalcula en",
+          "//    cada corrida (no se edita a mano en el JSON de la coleccion). Cada",
+          "//    request de transferencias lo clona y muta 1 campo para armar su",
+          "//    propio caso (ver Pre-request script de cada item de esa carpeta).",
+          "pm.collectionVariables.set(\"transferenciaTemplate\", JSON.stringify({",
+          "  cuentaOrigenId: 1,",
+          "  cuentaDestinoId: 2,",
+          "  monto: 25000,",
+          "  descripcion: \"Pago de alquiler - E2E\"",
+          "}));"
+        ]
+      }
+    }
+  ],
   "variable": [
     {
       "key": "baseUrl",
@@ -13,6 +61,16 @@
     {
       "key": "apiKey",
       "value": "sbx_demo_f581ca21e68a347288c94d71",
+      "type": "string"
+    },
+    {
+      "key": "transferenciaTemplate",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "transferenciaBody",
+      "value": "",
       "type": "string"
     }
   ],
@@ -2170,7 +2228,7 @@
     },
     {
       "name": "E2E - Flujos con validacion SQL",
-      "description": "Plantilla de automatizacion end-to-end: cada request de esta carpeta usa el Pre-request Script para validar en la BD (via /api/v1/sql/select, solo lectura) que los datos de prueba estan en el estado esperado ANTES de ejecutar la operacion REST, y el Tests Script (post-response) para volver a consultar la BD y confirmar que el INSERT/UPDATE quedo realmente persistido, no solo que el endpoint respondio bien. No agrega variables de coleccion ni de entorno nuevas: reutiliza {{baseUrl}}/{{apiKey}} y usa pm.variables (efimeras, solo durante la ejecucion del request) para pasar datos entre el pre-request y el test. Usa los mismos ids que ya trae scripts/seed-data.sql, asi que corre igual despues de un `npm run db:seed` limpio. Copien este patron para automatizar los demas endpoints del curso.",
+      "description": "Plantilla de automatizacion end-to-end con 2 tecnicas reusables: (1) un helper `utils.bodySqlRest(sql, params)` declarado UNA sola vez en el Pre-request Script de la COLECCION (icono de la coleccion > pestaña Scripts > Pre-request script) para no repetir el mismo pm.sendRequest en cada item; (2) un template de body (`transferenciaTemplate`, tambien armado en ese pre-request de coleccion) que cada request de transferencias clona y muta para generar casos positivos y negativos. Cada request usa su propio Pre-request Script para validar el estado previo en la BD (via /api/v1/sql/select, solo lectura) y su Tests Script (post-response) para volver a consultar la BD y confirmar que el INSERT/UPDATE (o el rechazo) quedo realmente reflejado, no solo que el endpoint respondio bien. No agrega variables de entorno: reutiliza {{baseUrl}}/{{apiKey}} y solo suma 2 collection variables (`transferenciaTemplate`/`transferenciaBody`) mas `pm.variables` efimeras para pasar datos entre pre-request y test. Usa los ids de scripts/seed-data.sql, asi que corre igual despues de un `npm run db:seed` limpio. Copien este patron para automatizar los demas endpoints del curso.",
       "item": [
         {
           "name": "Crear transferencia (INSERT + validacion SQL)",
@@ -2188,7 +2246,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"cuentaOrigenId\": 1,\n  \"cuentaDestinoId\": 2,\n  \"monto\": 25000,\n  \"descripcion\": \"Pago de alquiler - E2E\"\n}",
+              "raw": "{{transferenciaBody}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2206,7 +2264,7 @@
                 "transferencias"
               ]
             },
-            "description": "INSERT simple. Pre-request: confirma que las cuentas 1 y 2 (seed) existen y estan activas. Post-request: relee la fila insertada y valida estado='pendiente' y los ids de cuenta."
+            "description": "Caso feliz. Pre-request: clona `transferenciaTemplate` SIN mutarlo y confirma que las cuentas 1 y 2 (seed) existen y estan activas. Post-request: relee la fila insertada y valida estado='pendiente'."
           },
           "event": [
             {
@@ -2214,36 +2272,28 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// Pre-request: valida que las cuentas origen y destino existan y esten",
-                  "// activas antes de intentar la transferencia (evita un POST que falle",
-                  "// por datos de prueba inconsistentes).",
-                  "const cuentaOrigenId = 1;",
-                  "const cuentaDestinoId = 2;",
-                  "pm.variables.set(\"cuentaOrigenId\", cuentaOrigenId);",
-                  "pm.variables.set(\"cuentaDestinoId\", cuentaDestinoId);",
+                  "// Clona el template base (declarado en el Pre-request Script DE LA",
+                  "// COLECCION) sin mutarlo -- este item es el caso feliz -- y lo deja",
+                  "// listo en transferenciaBody, que el Body del request referencia",
+                  "// como {{transferenciaBody}}.",
+                  "const template = JSON.parse(pm.collectionVariables.get(\"transferenciaTemplate\"));",
+                  "pm.collectionVariables.set(\"transferenciaBody\", JSON.stringify(template));",
                   "",
-                  "pm.sendRequest({",
-                  "  url: pm.collectionVariables.get(\"baseUrl\") + \"/api/v1/sql/select\",",
-                  "  method: \"POST\",",
-                  "  header: {",
-                  "    \"Content-Type\": \"application/json\",",
-                  "    \"x-api-key\": pm.collectionVariables.get(\"apiKey\")",
-                  "  },",
-                  "  body: {",
-                  "    mode: \"raw\",",
-                  "    raw: JSON.stringify({",
-                  "      sql: \"SELECT id, activa FROM cuentas WHERE id IN ($1, $2)\",",
-                  "      params: [cuentaOrigenId, cuentaDestinoId]",
-                  "    })",
-                  "  }",
-                  "}, (err, res) => {",
+                  "// Valida que las cuentas involucradas existan y esten activas antes",
+                  "// de mandar el POST, usando el helper utils.bodySqlRest (tambien",
+                  "// declarado en el Pre-request Script de la coleccion).",
+                  "const request = utils.bodySqlRest(",
+                  "  \"SELECT id, activa FROM cuentas WHERE id IN ($1, $2)\",",
+                  "  [template.cuentaOrigenId, template.cuentaDestinoId]",
+                  ");",
+                  "pm.sendRequest(request, (err, res) => {",
                   "  if (err) {",
                   "    console.error(\"Pre-request SQL check fallo:\", err);",
                   "    return;",
                   "  }",
                   "  const rows = res.json().data || [];",
-                  "  const origen = rows.find((r) => r.id === cuentaOrigenId);",
-                  "  const destino = rows.find((r) => r.id === cuentaDestinoId);",
+                  "  const origen = rows.find((r) => r.id === template.cuentaOrigenId);",
+                  "  const destino = rows.find((r) => r.id === template.cuentaDestinoId);",
                   "  console.log(\"Cuenta origen activa?\", origen && origen.activa);",
                   "  console.log(\"Cuenta destino activa?\", destino && destino.activa);",
                   "});"
@@ -2268,30 +2318,187 @@
                   "",
                   "const transferenciaId = body.data.id;",
                   "",
-                  "// Post-request: vuelve a consultar la BD para confirmar que el INSERT",
-                  "// realmente quedo persistido (no solo que el endpoint respondio bien).",
-                  "pm.sendRequest({",
-                  "  url: pm.collectionVariables.get(\"baseUrl\") + \"/api/v1/sql/select\",",
-                  "  method: \"POST\",",
-                  "  header: {",
-                  "    \"Content-Type\": \"application/json\",",
-                  "    \"x-api-key\": pm.collectionVariables.get(\"apiKey\")",
-                  "  },",
-                  "  body: {",
-                  "    mode: \"raw\",",
-                  "    raw: JSON.stringify({",
-                  "      sql: \"SELECT id, cuenta_origen_id, cuenta_destino_id, estado FROM transferencias WHERE id = $1\",",
-                  "      params: [transferenciaId]",
-                  "    })",
-                  "  }",
-                  "}, (err, res) => {",
+                  "// Post-request: vuelve a consultar la BD (mismo helper utils.bodySqlRest)",
+                  "// para confirmar que el INSERT realmente quedo persistido.",
+                  "const request = utils.bodySqlRest(",
+                  "  \"SELECT id, cuenta_origen_id, cuenta_destino_id, estado FROM transferencias WHERE id = $1\",",
+                  "  [transferenciaId]",
+                  ");",
+                  "pm.sendRequest(request, (err, res) => {",
                   "  pm.test(\"La BD confirma la fila insertada con estado 'pendiente'\", () => {",
                   "    if (err) throw err;",
                   "    const row = res.json().data[0];",
                   "    pm.expect(row, \"no se encontro la transferencia en la BD\").to.not.be.undefined;",
                   "    pm.expect(row.estado).to.eql(\"pendiente\");",
-                  "    pm.expect(Number(row.cuenta_origen_id)).to.eql(pm.variables.get(\"cuentaOrigenId\"));",
-                  "    pm.expect(Number(row.cuenta_destino_id)).to.eql(pm.variables.get(\"cuentaDestinoId\"));",
+                  "  });",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Crear transferencia - monto invalido (validacion negativa)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{{transferenciaBody}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/transferencias",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "transferencias"
+              ]
+            },
+            "description": "Caso negativo (patron template + mutacion): clona transferenciaTemplate y muta SOLO `monto` a -500. Zod (monto: positive()) lo rechaza con 400 antes de tocar la BD. Post-request confirma con un COUNT(*) que no se inserto ninguna fila."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Clona el template y muta SOLO 'monto' para armar el caso negativo:",
+                  "// un monto negativo debe ser rechazado por Zod (monto: positive())",
+                  "// antes de tocar la BD -- ver app/api/v1/transferencias/route.ts.",
+                  "const template = JSON.parse(pm.collectionVariables.get(\"transferenciaTemplate\"));",
+                  "template.monto = -500;",
+                  "pm.collectionVariables.set(\"transferenciaBody\", JSON.stringify(template));",
+                  "",
+                  "// Guarda cuantas transferencias hay ANTES del intento para comparar",
+                  "// despues del rechazo y confirmar que no se inserto nada.",
+                  "const request = utils.bodySqlRest(\"SELECT COUNT(*) AS total FROM transferencias\");",
+                  "pm.sendRequest(request, (err, res) => {",
+                  "  if (err) {",
+                  "    console.error(\"Pre-request SQL check fallo:\", err);",
+                  "    return;",
+                  "  }",
+                  "  pm.variables.set(\"totalAntes\", res.json().data[0].total);",
+                  "});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 400 Bad Request (monto invalido)\", () => {",
+                  "  pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "// Post-request: confirma que la validacion realmente freno el INSERT --",
+                  "// el conteo de filas en 'transferencias' no debe haber cambiado.",
+                  "const request = utils.bodySqlRest(\"SELECT COUNT(*) AS total FROM transferencias\");",
+                  "pm.sendRequest(request, (err, res) => {",
+                  "  pm.test(\"La BD no registro ninguna fila nueva\", () => {",
+                  "    if (err) throw err;",
+                  "    const totalDespues = res.json().data[0].total;",
+                  "    pm.expect(Number(totalDespues)).to.eql(Number(pm.variables.get(\"totalAntes\")));",
+                  "  });",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Crear transferencia - cuenta origen inexistente (validacion negativa)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{{transferenciaBody}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/transferencias",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "transferencias"
+              ]
+            },
+            "description": "Caso negativo (patron template + mutacion): clona transferenciaTemplate y muta `cuentaOrigenId` a un id inexistente. Pasa Zod (es un entero positivo) pero rompe la foreign key al insertar (Postgres 23503 -> 400). Post-request confirma con un COUNT(*) que no se inserto nada."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Clona el template y muta 'cuentaOrigenId' a un id que NO existe en",
+                  "// el seed -- pasa la validacion de Zod (es un entero positivo) pero",
+                  "// rompe la foreign key al insertar (Postgres 23503), que apiRoute()",
+                  "// mapea a 400 VALIDATION_ERROR.",
+                  "const template = JSON.parse(pm.collectionVariables.get(\"transferenciaTemplate\"));",
+                  "template.cuentaOrigenId = 999999;",
+                  "pm.collectionVariables.set(\"transferenciaBody\", JSON.stringify(template));",
+                  "",
+                  "const request = utils.bodySqlRest(\"SELECT COUNT(*) AS total FROM transferencias\");",
+                  "pm.sendRequest(request, (err, res) => {",
+                  "  if (err) {",
+                  "    console.error(\"Pre-request SQL check fallo:\", err);",
+                  "    return;",
+                  "  }",
+                  "  pm.variables.set(\"totalAntes\", res.json().data[0].total);",
+                  "});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 400 Bad Request (cuenta origen inexistente)\", () => {",
+                  "  pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "const request = utils.bodySqlRest(\"SELECT COUNT(*) AS total FROM transferencias\");",
+                  "pm.sendRequest(request, (err, res) => {",
+                  "  pm.test(\"La BD no registro ninguna fila nueva (fallo la FK)\", () => {",
+                  "    if (err) throw err;",
+                  "    const totalDespues = res.json().data[0].total;",
+                  "    pm.expect(Number(totalDespues)).to.eql(Number(pm.variables.get(\"totalAntes\")));",
                   "  });",
                   "});"
                 ]
@@ -2349,21 +2556,8 @@
                   "const facturaId = 3;",
                   "pm.variables.set(\"facturaId\", facturaId);",
                   "",
-                  "pm.sendRequest({",
-                  "  url: pm.collectionVariables.get(\"baseUrl\") + \"/api/v1/sql/select\",",
-                  "  method: \"POST\",",
-                  "  header: {",
-                  "    \"Content-Type\": \"application/json\",",
-                  "    \"x-api-key\": pm.collectionVariables.get(\"apiKey\")",
-                  "  },",
-                  "  body: {",
-                  "    mode: \"raw\",",
-                  "    raw: JSON.stringify({",
-                  "      sql: \"SELECT id, estado FROM facturas WHERE id = $1\",",
-                  "      params: [facturaId]",
-                  "    })",
-                  "  }",
-                  "}, (err, res) => {",
+                  "const request = utils.bodySqlRest(\"SELECT id, estado FROM facturas WHERE id = $1\", [facturaId]);",
+                  "pm.sendRequest(request, (err, res) => {",
                   "  if (err) {",
                   "    console.error(\"Pre-request SQL check fallo:\", err);",
                   "    return;",
@@ -2394,21 +2588,11 @@
                   "// Post-request: confirma en la BD que la factura quedo 'pagada' Y que",
                   "// se genero la fila en 'pagos' (la operacion es transaccional, ver",
                   "// app/api/v1/facturas/[id]/pagar/route.ts).",
-                  "pm.sendRequest({",
-                  "  url: pm.collectionVariables.get(\"baseUrl\") + \"/api/v1/sql/select\",",
-                  "  method: \"POST\",",
-                  "  header: {",
-                  "    \"Content-Type\": \"application/json\",",
-                  "    \"x-api-key\": pm.collectionVariables.get(\"apiKey\")",
-                  "  },",
-                  "  body: {",
-                  "    mode: \"raw\",",
-                  "    raw: JSON.stringify({",
-                  "      sql: \"SELECT f.estado AS factura_estado, p.estado AS pago_estado FROM facturas f JOIN pagos p ON p.factura_id = f.id WHERE f.id = $1 ORDER BY p.id DESC LIMIT 1\",",
-                  "      params: [facturaId]",
-                  "    })",
-                  "  }",
-                  "}, (err, res) => {",
+                  "const request = utils.bodySqlRest(",
+                  "  \"SELECT f.estado AS factura_estado, p.estado AS pago_estado FROM facturas f JOIN pagos p ON p.factura_id = f.id WHERE f.id = $1 ORDER BY p.id DESC LIMIT 1\",",
+                  "  [facturaId]",
+                  ");",
+                  "pm.sendRequest(request, (err, res) => {",
                   "  pm.test(\"La BD confirma factura pagada + pago registrado\", () => {",
                   "    if (err) throw err;",
                   "    const row = res.json().data[0];",
@@ -2460,21 +2644,11 @@
                   "pm.variables.set(\"usuarioId\", usuarioId);",
                   "pm.variables.set(\"roleId\", roleId);",
                   "",
-                  "pm.sendRequest({",
-                  "  url: pm.collectionVariables.get(\"baseUrl\") + \"/api/v1/sql/select\",",
-                  "  method: \"POST\",",
-                  "  header: {",
-                  "    \"Content-Type\": \"application/json\",",
-                  "    \"x-api-key\": pm.collectionVariables.get(\"apiKey\")",
-                  "  },",
-                  "  body: {",
-                  "    mode: \"raw\",",
-                  "    raw: JSON.stringify({",
-                  "      sql: \"SELECT usuario_id, role_id, activo FROM usuario_roles WHERE usuario_id = $1 AND role_id = $2\",",
-                  "      params: [usuarioId, roleId]",
-                  "    })",
-                  "  }",
-                  "}, (err, res) => {",
+                  "const request = utils.bodySqlRest(",
+                  "  \"SELECT usuario_id, role_id, activo FROM usuario_roles WHERE usuario_id = $1 AND role_id = $2\",",
+                  "  [usuarioId, roleId]",
+                  ");",
+                  "pm.sendRequest(request, (err, res) => {",
                   "  if (err) {",
                   "    console.error(\"Pre-request SQL check fallo:\", err);",
                   "    return;",
@@ -2499,21 +2673,11 @@
                   "",
                   "// qa_api no tiene grant de DELETE (ver CLAUDE.md): revocar un rol es un",
                   "// soft-delete (UPDATE activo = false), la fila sigue existiendo en la BD.",
-                  "pm.sendRequest({",
-                  "  url: pm.collectionVariables.get(\"baseUrl\") + \"/api/v1/sql/select\",",
-                  "  method: \"POST\",",
-                  "  header: {",
-                  "    \"Content-Type\": \"application/json\",",
-                  "    \"x-api-key\": pm.collectionVariables.get(\"apiKey\")",
-                  "  },",
-                  "  body: {",
-                  "    mode: \"raw\",",
-                  "    raw: JSON.stringify({",
-                  "      sql: \"SELECT activo FROM usuario_roles WHERE usuario_id = $1 AND role_id = $2\",",
-                  "      params: [usuarioId, roleId]",
-                  "    })",
-                  "  }",
-                  "}, (err, res) => {",
+                  "const request = utils.bodySqlRest(",
+                  "  \"SELECT activo FROM usuario_roles WHERE usuario_id = $1 AND role_id = $2\",",
+                  "  [usuarioId, roleId]",
+                  ");",
+                  "pm.sendRequest(request, (err, res) => {",
                   "  pm.test(\"La BD confirma soft-delete: activo = false (la fila no se borro)\", () => {",
                   "    if (err) throw err;",
                   "    const row = res.json().data[0];",
