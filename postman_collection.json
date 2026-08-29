@@ -38,16 +38,15 @@
           "  };",
           "}",
           "",
-          "// 2) Template base del body de \"Crear transferencia\". Se recalcula en",
-          "//    cada corrida (no se edita a mano en el JSON de la coleccion). Cada",
-          "//    request de transferencias lo clona y muta 1 campo para armar su",
-          "//    propio caso (ver Pre-request script de cada item de esa carpeta).",
-          "pm.collectionVariables.set(\"transferenciaTemplate\", JSON.stringify({",
-          "  cuentaOrigenId: 1,",
-          "  cuentaDestinoId: 2,",
-          "  monto: 25000,",
-          "  descripcion: \"Pago de alquiler - E2E\"",
-          "}));"
+          "// 2) Valores por defecto del body de \"Crear transferencia\". Se",
+          "//    resetean a su default ANTES DE CADA request (porque este script",
+          "//    corre siempre primero). Si un item necesita un caso distinto,",
+          "//    sobreescribe SOLO el campo que le interesa en su propio",
+          "//    Pre-request Script -- no hace falta tocar el body completo.",
+          "pm.collectionVariables.set(\"cuentaOrigenId\", 1);",
+          "pm.collectionVariables.set(\"cuentaDestinoId\", 2);",
+          "pm.collectionVariables.set(\"monto\", 25000);",
+          "pm.collectionVariables.set(\"descripcion\", \"Pago de alquiler - E2E\");"
         ]
       }
     }
@@ -64,13 +63,23 @@
       "type": "string"
     },
     {
-      "key": "transferenciaTemplate",
-      "value": "",
+      "key": "cuentaOrigenId",
+      "value": "1",
       "type": "string"
     },
     {
-      "key": "transferenciaBody",
-      "value": "",
+      "key": "cuentaDestinoId",
+      "value": "2",
+      "type": "string"
+    },
+    {
+      "key": "monto",
+      "value": "25000",
+      "type": "string"
+    },
+    {
+      "key": "descripcion",
+      "value": "Pago de alquiler - E2E",
       "type": "string"
     }
   ],
@@ -2228,7 +2237,7 @@
     },
     {
       "name": "E2E - Flujos con validacion SQL",
-      "description": "Plantilla de automatizacion end-to-end con 2 tecnicas reusables: (1) un helper `utils.bodySqlRest(sql, params)` declarado UNA sola vez en el Pre-request Script de la COLECCION (icono de la coleccion > pestaña Scripts > Pre-request script) para no repetir el mismo pm.sendRequest en cada item; (2) un template de body (`transferenciaTemplate`, tambien armado en ese pre-request de coleccion) que cada request de transferencias clona y muta para generar casos positivos y negativos. Cada request usa su propio Pre-request Script para validar el estado previo en la BD (via /api/v1/sql/select, solo lectura) y su Tests Script (post-response) para volver a consultar la BD y confirmar que el INSERT/UPDATE (o el rechazo) quedo realmente reflejado, no solo que el endpoint respondio bien. No agrega variables de entorno: reutiliza {{baseUrl}}/{{apiKey}} y solo suma 2 collection variables (`transferenciaTemplate`/`transferenciaBody`) mas `pm.variables` efimeras para pasar datos entre pre-request y test. Usa los ids de scripts/seed-data.sql, asi que corre igual despues de un `npm run db:seed` limpio. Copien este patron para automatizar los demas endpoints del curso.",
+      "description": "Plantilla de automatizacion end-to-end con 2 tecnicas reusables: (1) un helper `utils.bodySqlRest(sql, params)` declarado UNA sola vez en el Pre-request Script de la COLECCION (icono de la coleccion > pestaña Scripts > Pre-request script) para no repetir el mismo pm.sendRequest en cada item; (2) SOLO los campos del body de 'Crear transferencia' que varian entre casos son `{{variable}}` (cuentaOrigenId, cuentaDestinoId, monto, descripcion) -- el resto del JSON queda igual de legible que cualquier body fijo. Ese mismo Pre-request Script de la coleccion resetea esas 4 variables a su valor por defecto ANTES DE CADA request; el item que necesita un caso distinto sobreescribe SOLO el campo que le interesa en su propio Pre-request Script, sin tocar ni clonar el body completo. Cada request usa su propio Pre-request Script para validar el estado previo en la BD (via /api/v1/sql/select, solo lectura) y su Tests Script (post-response) para volver a consultar la BD y confirmar que el INSERT/UPDATE (o el rechazo) quedo realmente reflejado, no solo que el endpoint respondio bien. No agrega variables de entorno: reutiliza {{baseUrl}}/{{apiKey}} y usa `pm.variables` efimeras para el resto. Usa los ids de scripts/seed-data.sql, asi que corre igual despues de un `npm run db:seed` limpio. Copien este patron para automatizar los demas endpoints del curso.",
       "item": [
         {
           "name": "Crear transferencia (INSERT + validacion SQL)",
@@ -2246,7 +2255,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{{transferenciaBody}}",
+              "raw": "{\n  \"cuentaOrigenId\": {{cuentaOrigenId}},\n  \"cuentaDestinoId\": {{cuentaDestinoId}},\n  \"monto\": {{monto}},\n  \"descripcion\": \"{{descripcion}}\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2264,7 +2273,7 @@
                 "transferencias"
               ]
             },
-            "description": "Caso feliz. Pre-request: clona `transferenciaTemplate` SIN mutarlo y confirma que las cuentas 1 y 2 (seed) existen y estan activas. Post-request: relee la fila insertada y valida estado='pendiente'."
+            "description": "Caso feliz. El body usa los valores por defecto que puso el Pre-request Script de la COLECCION (cuentaOrigenId=1, cuentaDestinoId=2, monto=25000) -- este item no necesita sobreescribir nada. Pre-request: confirma que las cuentas 1 y 2 (seed) existen y estan activas. Post-request: relee la fila insertada y valida estado='pendiente'."
           },
           "event": [
             {
@@ -2272,19 +2281,19 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// Clona el template base (declarado en el Pre-request Script DE LA",
-                  "// COLECCION) sin mutarlo -- este item es el caso feliz -- y lo deja",
-                  "// listo en transferenciaBody, que el Body del request referencia",
-                  "// como {{transferenciaBody}}.",
-                  "const template = JSON.parse(pm.collectionVariables.get(\"transferenciaTemplate\"));",
-                  "pm.collectionVariables.set(\"transferenciaBody\", JSON.stringify(template));",
+                  "// Este item usa los valores por defecto (cuentaOrigenId/cuentaDestinoId/",
+                  "// monto/descripcion) que el Pre-request Script DE LA COLECCION ya puso",
+                  "// en las collection variables antes de llegar aca -- no hace falta",
+                  "// sobreescribir nada para el caso feliz.",
                   "",
                   "// Valida que las cuentas involucradas existan y esten activas antes",
                   "// de mandar el POST, usando el helper utils.bodySqlRest (tambien",
                   "// declarado en el Pre-request Script de la coleccion).",
+                  "const cuentaOrigenId = Number(pm.collectionVariables.get(\"cuentaOrigenId\"));",
+                  "const cuentaDestinoId = Number(pm.collectionVariables.get(\"cuentaDestinoId\"));",
                   "const request = utils.bodySqlRest(",
                   "  \"SELECT id, activa FROM cuentas WHERE id IN ($1, $2)\",",
-                  "  [template.cuentaOrigenId, template.cuentaDestinoId]",
+                  "  [cuentaOrigenId, cuentaDestinoId]",
                   ");",
                   "pm.sendRequest(request, (err, res) => {",
                   "  if (err) {",
@@ -2292,8 +2301,8 @@
                   "    return;",
                   "  }",
                   "  const rows = res.json().data || [];",
-                  "  const origen = rows.find((r) => r.id === template.cuentaOrigenId);",
-                  "  const destino = rows.find((r) => r.id === template.cuentaDestinoId);",
+                  "  const origen = rows.find((r) => r.id === cuentaOrigenId);",
+                  "  const destino = rows.find((r) => r.id === cuentaDestinoId);",
                   "  console.log(\"Cuenta origen activa?\", origen && origen.activa);",
                   "  console.log(\"Cuenta destino activa?\", destino && destino.activa);",
                   "});"
@@ -2353,7 +2362,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{{transferenciaBody}}",
+              "raw": "{\n  \"cuentaOrigenId\": {{cuentaOrigenId}},\n  \"cuentaDestinoId\": {{cuentaDestinoId}},\n  \"monto\": {{monto}},\n  \"descripcion\": \"{{descripcion}}\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2371,7 +2380,7 @@
                 "transferencias"
               ]
             },
-            "description": "Caso negativo (patron template + mutacion): clona transferenciaTemplate y muta SOLO `monto` a -500. Zod (monto: positive()) lo rechaza con 400 antes de tocar la BD. Post-request confirma con un COUNT(*) que no se inserto ninguna fila."
+            "description": "Caso negativo: el mismo body que el caso feliz, pero el Pre-request Script sobreescribe SOLO la collection variable `monto` a -500. Zod (monto: positive()) lo rechaza con 400 antes de tocar la BD. Post-request confirma con un COUNT(*) que no se inserto ninguna fila."
           },
           "event": [
             {
@@ -2379,12 +2388,13 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// Clona el template y muta SOLO 'monto' para armar el caso negativo:",
-                  "// un monto negativo debe ser rechazado por Zod (monto: positive())",
-                  "// antes de tocar la BD -- ver app/api/v1/transferencias/route.ts.",
-                  "const template = JSON.parse(pm.collectionVariables.get(\"transferenciaTemplate\"));",
-                  "template.monto = -500;",
-                  "pm.collectionVariables.set(\"transferenciaBody\", JSON.stringify(template));",
+                  "// Sobreescribe SOLO 'monto' (las demas variables quedan en su default,",
+                  "// puesto por el Pre-request Script de la COLECCION) para armar el caso",
+                  "// negativo: un monto negativo debe ser rechazado por Zod",
+                  "// (monto: positive()) antes de tocar la BD -- ver",
+                  "// app/api/v1/transferencias/route.ts. No hace falta clonar ni tocar",
+                  "// el resto del body.",
+                  "pm.collectionVariables.set(\"monto\", -500);",
                   "",
                   "// Guarda cuantas transferencias hay ANTES del intento para comparar",
                   "// despues del rechazo y confirmar que no se inserto nada.",
@@ -2439,7 +2449,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{{transferenciaBody}}",
+              "raw": "{\n  \"cuentaOrigenId\": {{cuentaOrigenId}},\n  \"cuentaDestinoId\": {{cuentaDestinoId}},\n  \"monto\": {{monto}},\n  \"descripcion\": \"{{descripcion}}\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2457,7 +2467,7 @@
                 "transferencias"
               ]
             },
-            "description": "Caso negativo (patron template + mutacion): clona transferenciaTemplate y muta `cuentaOrigenId` a un id inexistente. Pasa Zod (es un entero positivo) pero rompe la foreign key al insertar (Postgres 23503 -> 400). Post-request confirma con un COUNT(*) que no se inserto nada."
+            "description": "Caso negativo: el mismo body que el caso feliz, pero el Pre-request Script sobreescribe SOLO `cuentaOrigenId` a un id inexistente. Pasa Zod (es un entero positivo) pero rompe la foreign key al insertar (Postgres 23503 -> 400). Post-request confirma con un COUNT(*) que no se inserto nada."
           },
           "event": [
             {
@@ -2465,13 +2475,11 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// Clona el template y muta 'cuentaOrigenId' a un id que NO existe en",
-                  "// el seed -- pasa la validacion de Zod (es un entero positivo) pero",
-                  "// rompe la foreign key al insertar (Postgres 23503), que apiRoute()",
-                  "// mapea a 400 VALIDATION_ERROR.",
-                  "const template = JSON.parse(pm.collectionVariables.get(\"transferenciaTemplate\"));",
-                  "template.cuentaOrigenId = 999999;",
-                  "pm.collectionVariables.set(\"transferenciaBody\", JSON.stringify(template));",
+                  "// Sobreescribe SOLO 'cuentaOrigenId' a un id que NO existe en el seed --",
+                  "// pasa la validacion de Zod (es un entero positivo) pero rompe la",
+                  "// foreign key al insertar (Postgres 23503), que apiRoute() mapea a",
+                  "// 400 VALIDATION_ERROR. Las demas variables quedan en su default.",
+                  "pm.collectionVariables.set(\"cuentaOrigenId\", 999999);",
                   "",
                   "const request = utils.bodySqlRest(\"SELECT COUNT(*) AS total FROM transferencias\");",
                   "pm.sendRequest(request, (err, res) => {",
