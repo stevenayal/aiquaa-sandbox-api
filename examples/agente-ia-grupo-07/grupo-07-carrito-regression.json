@@ -1,0 +1,926 @@
+{
+  "info": {
+    "name": "Grupo 07 - Carrito de Compras (Regression)",
+    "description": "Pruebas de regresion BDD para RF-G7-01..05. Ejecutar con Newman contra la API en vivo + DB qa_training.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000"
+    },
+    {
+      "key": "apiKey",
+      "value": "REEMPLAZAR_CON_API_KEY_VALIDA"
+    },
+    {
+      "key": "ordenId",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "G7-01 Listar todas las ordenes (sin filtro)",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "x-api-key",
+            "value": "{{apiKey}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/ordenes",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "ordenes"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 200', () => pm.response.to.have.status(200));",
+              "const j = pm.response.json();",
+              "pm.test('data es arreglo', () => pm.expect(Array.isArray(j.data)).to.be.true);",
+              "pm.test('no incluye items en listado', () => { j.data.forEach(o => pm.expect(o).to.not.have.property('items')); });",
+              "pm.test('limite 100', () => pm.expect(j.data.length).to.be.at.most(100));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "G7-01 Filtrar por usuarioId=1",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "x-api-key",
+            "value": "{{apiKey}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/ordenes?usuarioId=1",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "ordenes"
+          ],
+          "query": [
+            {
+              "key": "usuarioId",
+              "value": "1"
+            }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 200', () => pm.response.to.have.status(200));",
+              "const j = pm.response.json();",
+              "pm.test('todas pertenecen al comprador 1', () => { j.data.forEach(o => pm.expect(o.usuario_id).to.equal(1)); });",
+              "pm.test('orden ascendente por id', () => { for (let i=1;i<j.data.length;i++) pm.expect(j.data[i].id).to.be.above(j.data[i-1].id); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "G7-01 Comprador sin ordenes -> data vacio",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "x-api-key",
+            "value": "{{apiKey}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/ordenes?usuarioId=999999",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "ordenes"
+          ],
+          "query": [
+            {
+              "key": "usuarioId",
+              "value": "999999"
+            }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 200', () => pm.response.to.have.status(200));",
+              "const j = pm.response.json();",
+              "pm.test('data vacio', () => pm.expect(j.data).to.be.an('array').that.is.empty);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "G7-01 usuarioId invalido -> 400",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "x-api-key",
+            "value": "{{apiKey}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/ordenes?usuarioId=abc",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "ordenes"
+          ],
+          "query": [
+            {
+              "key": "usuarioId",
+              "value": "abc"
+            }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 400', () => pm.response.to.have.status(400));",
+              "pm.test('VALIDATION_ERROR', () => pm.expect(pm.response.json().error || pm.response.json().code).to.match(/VALIDATION_ERROR/i));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "G7-02 Checkout 2 items (crea orden, guarda id)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "x-api-key",
+            "value": "{{apiKey}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/ordenes",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "ordenes"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\"usuarioId\":1,\"items\":[{\"producto\":\"Teclado\",\"cantidad\":2,\"precioUnitario\":10.5},{\"producto\":\"Mouse\",\"cantidad\":1,\"precioUnitario\":5.25}]}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 201', () => pm.response.to.have.status(201));",
+              "const j = pm.response.json();",
+              "pm.test('monto = 26.25', () => pm.expect(Number(j.data.monto)).to.equal(26.25));",
+              "pm.test('producto = primer item', () => pm.expect(j.data.producto).to.equal('Teclado'));",
+              "pm.test('estado pendiente', () => pm.expect(j.data.estado).to.equal('pendiente'));",
+              "pm.test('2 items con subtotales', () => { pm.expect(j.data.items).to.have.length(2); const s=j.data.items.map(i=>Number(i.subtotal)); pm.expect(s[0]).to.equal(21); pm.expect(s[1]).to.equal(5.25); });",
+              "pm.collectionVariables.set('ordenId', j.data.id);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "G7-02 Items vacios -> 400",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "x-api-key",
+            "value": "{{apiKey}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/ordenes",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "ordenes"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\"usuarioId\":1,\"items\":[]}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 400', () => pm.response.to.have.status(400));",
+              "pm.test('VALIDATION_ERROR', () => pm.expect(pm.response.json().error || pm.response.json().code).to.match(/VALIDATION_ERROR/i));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "G7-02 Cantidad cero -> 400",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "x-api-key",
+            "value": "{{apiKey}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/ordenes",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "ordenes"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\"usuarioId\":1,\"items\":[{\"producto\":\"X\",\"cantidad\":0,\"precioUnitario\":9.99}]}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 400', () => pm.response.to.have.status(400));",
+              "pm.test('VALIDATION_ERROR', () => pm.expect(pm.response.json().error || pm.response.json().code).to.match(/VALIDATION_ERROR/i));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "G7-02 Cantidad como texto -> 400",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "x-api-key",
+            "value": "{{apiKey}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/ordenes",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "ordenes"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\"usuarioId\":1,\"items\":[{\"producto\":\"X\",\"cantidad\":\"2\",\"precioUnitario\":9.99}]}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 400', () => pm.response.to.have.status(400));",
+              "pm.test('VALIDATION_ERROR', () => pm.expect(pm.response.json().error || pm.response.json().code).to.match(/VALIDATION_ERROR/i));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "G7-02 Comprador inexistente -> 400",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "x-api-key",
+            "value": "{{apiKey}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/ordenes",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "ordenes"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\"usuarioId\":999999,\"items\":[{\"producto\":\"X\",\"cantidad\":1,\"precioUnitario\":9.99}]}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 400', () => pm.response.to.have.status(400));",
+              "pm.test('VALIDATION_ERROR', () => pm.expect(pm.response.json().error || pm.response.json().code).to.match(/VALIDATION_ERROR/i));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "G7-03 Consultar orden creada",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "x-api-key",
+            "value": "{{apiKey}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/ordenes/{{ordenId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "ordenes",
+            "{{ordenId}}"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 200', () => pm.response.to.have.status(200));",
+              "const j = pm.response.json();",
+              "pm.test('tiene items', () => pm.expect(j.data.items.length).to.be.above(0));",
+              "pm.test('suma subtotales = monto', () => { const sum=j.data.items.reduce((a,i)=>a+Number(i.subtotal),0); pm.expect(sum).to.equal(Number(j.data.monto)); });",
+              "pm.test('items orden asc', () => { for (let i=1;i<j.data.items.length;i++) pm.expect(j.data.items[i].id).to.be.above(j.data.items[i-1].id); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "G7-03 Orden inexistente -> 404",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "x-api-key",
+            "value": "{{apiKey}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/ordenes/999999",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "ordenes",
+            "999999"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 404', () => pm.response.to.have.status(404));",
+              "pm.test('mensaje Orden no encontrada', () => pm.expect(JSON.stringify(pm.response.json())).to.match(/Orden no encontrada/i));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "G7-03 Id no entero -> 400",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "x-api-key",
+            "value": "{{apiKey}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/ordenes/abc",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "ordenes",
+            "abc"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 400', () => pm.response.to.have.status(400));",
+              "pm.test('VALIDATION_ERROR', () => pm.expect(pm.response.json().error || pm.response.json().code).to.match(/VALIDATION_ERROR/i));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "G7-04 Recalculo (cabecera, no items)",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "x-api-key",
+            "value": "{{apiKey}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/ordenes/{{ordenId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "ordenes",
+            "{{ordenId}}"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\"items\":[{\"producto\":\"B\",\"cantidad\":3,\"precioUnitario\":7}]}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 200', () => pm.response.to.have.status(200));",
+              "const j = pm.response.json();",
+              "pm.test('monto recalculado = 21', () => pm.expect(Number(j.data.monto)).to.equal(21));",
+              "pm.test('producto = B', () => pm.expect(j.data.producto).to.equal('B'));",
+              "pm.test('sin propiedad items', () => pm.expect(j.data).to.not.have.property('items'));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "G7-04 Items vacios -> 400",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "x-api-key",
+            "value": "{{apiKey}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/ordenes/1",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "ordenes",
+            "1"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\"items\":[]}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 400', () => pm.response.to.have.status(400));",
+              "pm.test('VALIDATION_ERROR', () => pm.expect(pm.response.json().error || pm.response.json().code).to.match(/VALIDATION_ERROR/i));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "G7-04 Orden inexistente -> 404",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "x-api-key",
+            "value": "{{apiKey}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/ordenes/999999",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "ordenes",
+            "999999"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\"items\":[{\"producto\":\"Z\",\"cantidad\":1,\"precioUnitario\":1}]}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 404', () => pm.response.to.have.status(404));",
+              "pm.test('Orden no encontrada', () => pm.expect(JSON.stringify(pm.response.json())).to.match(/Orden no encontrada/i));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "G7-04 Post-recalculo: GET mantiene items originales",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "x-api-key",
+            "value": "{{apiKey}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/ordenes/{{ordenId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "ordenes",
+            "{{ordenId}}"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 200', () => pm.response.to.have.status(200));",
+              "const j = pm.response.json();",
+              "pm.test('monto nuevo 21', () => pm.expect(Number(j.data.monto)).to.equal(21));",
+              "pm.test('items siguen siendo el detalle original (inconsistencia disenio)', () => { pm.expect(j.data.items[0].producto).to.equal('Teclado'); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "G7-05 Dar de baja orden vigente",
+      "request": {
+        "method": "DELETE",
+        "header": [
+          {
+            "key": "x-api-key",
+            "value": "{{apiKey}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/ordenes/{{ordenId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "ordenes",
+            "{{ordenId}}"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 204', () => pm.response.to.have.status(204));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "G7-05 Tras baja: GET -> 404",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "x-api-key",
+            "value": "{{apiKey}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/ordenes/{{ordenId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "ordenes",
+            "{{ordenId}}"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 404', () => pm.response.to.have.status(404));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "G7-05 Tras baja: fuera de listado",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "x-api-key",
+            "value": "{{apiKey}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/ordenes?usuarioId=1",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "ordenes"
+          ],
+          "query": [
+            {
+              "key": "usuarioId",
+              "value": "1"
+            }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 200', () => pm.response.to.have.status(200));",
+              "const j = pm.response.json();",
+              "pm.test('no aparece la orden dada de baja', () => { const id = Number(pm.collectionVariables.get('ordenId')); pm.expect(j.data.find(o => o.id === id)).to.be.undefined; });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "G7-05 Baja de orden ya dada de baja -> 404",
+      "request": {
+        "method": "DELETE",
+        "header": [
+          {
+            "key": "x-api-key",
+            "value": "{{apiKey}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/ordenes/{{ordenId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "ordenes",
+            "{{ordenId}}"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 404', () => pm.response.to.have.status(404));"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
