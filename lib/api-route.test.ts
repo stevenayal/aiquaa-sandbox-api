@@ -22,7 +22,7 @@ function req(opts: { method?: string; url?: string; body?: unknown } = {}) {
   });
 }
 
-const okAuth = { ok: true, apiKeyId: "key-1", label: "alumno01" };
+const okAuth = { ok: true, apiKeyId: "key-1", label: "alumno01", curso: 1 };
 const okRateLimit = { success: true, limit: 30, remaining: 29, reset: Date.now() + 60_000 };
 
 beforeEach(() => {
@@ -92,7 +92,7 @@ describe("apiRoute", () => {
 
     expect(handler).toHaveBeenCalledWith(
       { id: 1, extra: "fromBody" },
-      { apiKeyId: "key-1", ip: "127.0.0.1" },
+      { apiKeyId: "key-1", curso: 1, ip: "127.0.0.1" },
     );
   });
 
@@ -191,4 +191,41 @@ describe("apiRoute", () => {
       expect(json.error.code).toBe("VALIDATION_ERROR");
     },
   );
+
+  // Aislamiento entre cohortes: las rutas de /api/v2 declaran `curso: 2` y solo
+  // aceptan keys de ese curso (las de /api/v1 no declaran nada y siguen
+  // abiertas a cualquier key valida).
+  it("returns 403 and skips the handler when the API key belongs to another curso", async () => {
+    const handler = vi.fn();
+    const route = apiRoute({ curso: 2, inputSchema: z.object({}), handler });
+
+    const res = await route(req());
+    const json = await res.json();
+
+    expect(res.status).toBe(403);
+    expect(json.error.code).toBe("FORBIDDEN");
+    expect(handler).not.toHaveBeenCalled();
+    expect(checkRateLimitMock).not.toHaveBeenCalled();
+  });
+
+  it("runs the handler when the API key matches the route curso", async () => {
+    authenticateMock.mockResolvedValue({ ...okAuth, curso: 2 });
+    const handler = vi.fn().mockResolvedValue({ body: { data: [] } });
+    const route = apiRoute({ curso: 2, inputSchema: z.object({}), handler });
+
+    const res = await route(req());
+
+    expect(res.status).toBe(200);
+    expect(handler).toHaveBeenCalled();
+  });
+
+  it("passes curso to the handler context", async () => {
+    authenticateMock.mockResolvedValue({ ...okAuth, curso: 2 });
+    const handler = vi.fn().mockResolvedValue({ body: {} });
+    const route = apiRoute({ curso: 2, inputSchema: z.object({}), handler });
+
+    await route(req());
+
+    expect(handler).toHaveBeenCalledWith({}, expect.objectContaining({ curso: 2 }));
+  });
 });

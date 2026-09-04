@@ -10,22 +10,21 @@
 // point, not inside it — Scalar owns its full-height two-column app shell
 // from the <script id="api-reference"> tag down, so this just adds a
 // slim strip above it instead of fighting its internal layout/scroll.
-const html = `<!doctype html>
-<html lang="es">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>aiquaa Sandbox API — Docs</title>
-    <link rel="icon" href="/favicon-aiquaa.png" />
-  </head>
-  <body>
-    <header style="display:flex;align-items:center;height:56px;padding:0 16px;background:#0a0a0a;">
-      <img src="/aiquaa-logo.png" alt="aiquaa — Saber es calidad" height="40" style="display:block;" />
-    </header>
-    <script id="api-reference" data-url="/api/v1/docs"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script>
-  </body>
-</html>`;
+//
+// Dos cursos, dos specs, dos páginas: /docs (curso 1) y /docs/v2 (curso 2),
+// cada una con su propio `data-url`. Se probó primero el selector integrado de
+// Scalar (`data-configuration` con `sources`), pero la build del CDN que se
+// sirve hoy (@scalar/api-reference@1.67.0) queda en el skeleton de carga y
+// loguea "Document not found in configList" — con o sin `slug` por source.
+// Los links del header hacen el mismo trabajo y no dependen de una API interna
+// de Scalar que puede cambiar entre versiones del CDN.
+import { docsPage } from "@/lib/docs-page";
+
+const html = docsPage({
+  title: "aiquaa Sandbox API — Docs (Curso 1)",
+  specUrl: "/api/v1/docs",
+  activeHref: "/docs",
+});
 
 export async function GET() {
   return new Response(html, {

@@ -19,7 +19,24 @@ export const QA_TRAINING_TABLES = [
   "usuario_roles",
   "tickets",
 ] as const;
-const ALLOWED_SCHEMA = "qa_training";
+
+// Tablas del schema del curso 2 (Productos Bancarios) — ver
+// scripts/setup-db-v2.sql. Al agregar una tabla a qa_training_v2 hay que
+// sumarla aca tambien, igual que con QA_TRAINING_TABLES.
+export const QA_TRAINING_V2_TABLES = [
+  "usuarios",
+  "cuentas",
+  "movimientos",
+  "tarjetas",
+  "prestamos",
+  "cuotas_prestamo",
+  "beneficiarios",
+  "transferencias",
+  "ahorros",
+  "depositos",
+] as const;
+
+const DEFAULT_SCHEMA = "qa_training";
 // node-sql-parser's tableList() uses the literal string "null" (not JS null)
 // as the db/schema segment when a query omits the schema prefix.
 const NO_SCHEMA_SENTINEL = "null";
@@ -27,6 +44,11 @@ const NO_SCHEMA_SENTINEL = "null";
 export interface ValidateSqlOptions {
   expectedType: StatementType;
   requireWhere?: boolean;
+  // Cohorte: los endpoints de /api/v2/sql/* pasan "qa_training_v2" +
+  // QA_TRAINING_V2_TABLES. Los defaults reproducen exactamente el
+  // comportamiento previo (curso 1), asi que /api/v1 no cambia.
+  schema?: string;
+  allowedTables?: readonly string[];
 }
 
 export type ValidateSqlResult = { ok: true } | { ok: false; message: string };
@@ -42,6 +64,9 @@ export function validateSql(
   params: unknown[],
   options: ValidateSqlOptions,
 ): ValidateSqlResult {
+  const allowedSchema = options.schema ?? DEFAULT_SCHEMA;
+  const allowedTables = options.allowedTables ?? QA_TRAINING_TABLES;
+
   const trimmed = sql.trim();
   if (!trimmed) {
     return fail("SQL statement is empty.");
@@ -87,14 +112,14 @@ export function validateSql(
 
   for (const entry of tables) {
     const [, db, table] = entry.split("::");
-    if (db !== NO_SCHEMA_SENTINEL && db.toLowerCase() !== ALLOWED_SCHEMA) {
+    if (db !== NO_SCHEMA_SENTINEL && db.toLowerCase() !== allowedSchema) {
       return fail(
-        `Table "${db}.${table}" is not allowed. Only the ${ALLOWED_SCHEMA} schema may be queried.`,
+        `Table "${db}.${table}" is not allowed. Only the ${allowedSchema} schema may be queried.`,
       );
     }
-    if (!(QA_TRAINING_TABLES as readonly string[]).includes(table.toLowerCase())) {
+    if (!allowedTables.includes(table.toLowerCase())) {
       return fail(
-        `Table "${table}" is not allowed. Allowed tables: ${QA_TRAINING_TABLES.join(", ")}.`,
+        `Table "${table}" is not allowed. Allowed tables: ${allowedTables.join(", ")}.`,
       );
     }
   }

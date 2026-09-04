@@ -5,6 +5,7 @@ export type ApiErrorCode =
   | "RATE_LIMITED"
   | "VALIDATION_ERROR"
   | "EXECUTION_ERROR"
+  | "FORBIDDEN"
   | "NOT_FOUND"
   | "CONFLICT"
   | "INTERNAL_ERROR";
@@ -20,6 +21,7 @@ export interface ApiErrorBody {
 const STATUS_BY_CODE: Record<ApiErrorCode, number> = {
   UNAUTHORIZED: 401,
   RATE_LIMITED: 429,
+  FORBIDDEN: 403,
   VALIDATION_ERROR: 400,
   EXECUTION_ERROR: 400,
   NOT_FOUND: 404,

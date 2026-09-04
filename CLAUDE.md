@@ -14,11 +14,33 @@ must stay scoped to `qa_training` and never touch `public` or other schemas.
 
 Two independent surfaces exist side by side and must stay that way — don't merge or replace one with the other:
 
-1. **Raw-SQL sandbox** (`/api/v1/sql/select`, `/api/v1/sql/update`) — students submit SQL
-   directly; the server validates the AST before executing.
+1. **Raw-SQL sandbox** (`/api/v1/sql/select`, `/api/v1/sql/update`, plus their `/api/v2/sql/*`
+   twins) — students submit SQL directly; the server validates the AST before executing.
 2. **Fixed REST endpoints by course group** (`/api/v1/auth/login`, `/api/v1/transferencias`,
    etc.) — 29 routes with SQL fixed at code-authoring time, for BDD/Gherkin test automation
    practice. See the route→group table in `README.md`.
+
+### Two cohorts, two schemas — `/api/v1` (curso 1) and `/api/v2` (curso 2)
+
+One deploy serves two courses whose data must never mix. Curso 1 (10 groups) lives in
+`qa_training`; curso 2 "Productos Bancarios" (5 groups: cuentas, tarjetas, préstamos,
+transferencias/pagos, ahorros/depósitos) lives in `qa_training_v2`, created by
+`scripts/setup-db-v2.sql` + `scripts/seed-data-v2.sql`. Three resource names (cuentas,
+tarjetas, transferencias) exist in both — the separation is what keeps one cohort's
+soft-deletes from breaking the other's tests. Rules:
+
+- **The isolation is the schema, not a `WHERE`.** `/api/v2/**` routes use `getQaApiV2Pool()`
+  (and `getQaReaderV2Pool()`/`getQaWriterV2Pool()` for the sandbox), which reuse the *same*
+  roles and connection strings as v1 and differ only in `search_path`. Don't add a `curso`
+  column to the v1 tables, and don't point a v2 route at a v1 pool.
+- **Every `/api/v2` route passes `curso: 2` to `apiRoute()`/`handleSqlRequest()`** — a key from
+  the other cohort gets `403 FORBIDDEN` (`public.api_keys.curso`, default 1). v1 routes pass
+  nothing and stay open to any valid key.
+- `lib/sql-validator.ts` keeps **two** table whitelists (`QA_TRAINING_TABLES`,
+  `QA_TRAINING_V2_TABLES`); adding a table to either schema means adding it there too.
+- v2 has its own OpenAPI spec (`lib/openapi-v2.ts` → `/api/v2/docs`, rendered at `/docs/v2`)
+  and its own Postman collection (`postman_collection_v2.json`). Don't merge them into the v1
+  files — each cohort's sidebar should show only its own routes.
 
 ## Commands
 
@@ -69,8 +91,8 @@ grants to cover another role's job** — the separation is deliberate:
 - `qa_writer` — UPDATE only (plus SELECT — see gotcha below). Backs `/api/v1/sql/update`.
   Statements always require `WHERE`, enforced by `lib/sql-validator.ts`, not by the DB role.
 - `qa_api` — SELECT+INSERT+UPDATE, **no DELETE**. Used *exclusively* by the fixed-SQL REST
-  routes (`app/api/v1/**` except `sql/`). Routes that logically "delete" (e.g. revoking a role)
-  do a soft-delete `UPDATE ... SET activo = false` instead.
+  routes (`app/api/v1/**` and `app/api/v2/**`, except `sql/`). Routes that logically "delete"
+  (e.g. revoking a role) do a soft-delete `UPDATE ... SET activo = false` instead.
 - `app_meta` — internal bookkeeping only (`public.api_keys`, `public.sql_audit_log`).
 
 Postgres gotchas already hit and fixed here — don't reintroduce them:
@@ -81,7 +103,13 @@ Postgres gotchas already hit and fixed here — don't reintroduce them:
   table-level INSERT grant — easy to forget, fails as "permission denied for sequence".
 - To verify a role actually works against production, connect **directly** with `pg.Pool` using
   that role's own credentials — the Supabase MCP's `execute_sql` runs as its own service role
-  and can't `SET ROLE` to test another role's permissions.
+  and can't `SET ROLE` to test another role's permissions (it errors with "permission denied to
+  set role"). Without those credentials at hand, the next best check is catalog-level:
+  `has_table_privilege('qa_api', ...)`, `has_sequence_privilege(...)` and a `pg_policies` count
+  per schema.
+- When copying the RLS bootstrap loop from `setup-db.sql` to a new schema, remember it filters
+  on `schemaname = 'qa_training'` — leaving that literal in place enables RLS on the new tables
+  with **no** policies, and every role sees zero rows despite correct GRANTs.
 
 ### Supabase pooler connection strings (see `.env.example` for the full writeup)
 
@@ -105,10 +133,13 @@ Postgres gotchas already hit and fixed here — don't reintroduce them:
   single statement, only `qa_training` tables (`QA_TRAINING_TABLES`), correct statement type,
   WHERE required for UPDATE, placeholder count matches params. When a table is added to
   `qa_training`, add it to `QA_TRAINING_TABLES` too.
-- `lib/openapi.ts` — hand-authored OpenAPI 3.1 spec (no zod-to-openapi generator), served by
-  `app/api/v1/docs` and rendered at `/docs` via Scalar loaded from a CDN `<script>` (not the
-  `@scalar/api-reference-react` package — its bundled CSS didn't survive Turbopack, see
-  `app/docs/route.ts`). Every new route needs a matching `paths` entry here.
+- `lib/openapi.ts` / `lib/openapi-v2.ts` — hand-authored OpenAPI 3.1 specs (no zod-to-openapi
+  generator), served by `app/api/v1/docs` / `app/api/v2/docs` and rendered at `/docs` and
+  `/docs/v2` via Scalar loaded from a CDN `<script>` (not the `@scalar/api-reference-react`
+  package — its bundled CSS didn't survive Turbopack, see `app/docs/route.ts`). Every new route
+  needs a matching `paths` entry in its cohort's spec. The two docs pages share
+  `lib/docs-page.ts`; Scalar's own multi-spec selector (`data-configuration` with `sources`) was
+  tried first and the CDN build in use (1.67.0) never leaves the loading skeleton with it.
 - `lib/rate-limit.ts` — Upstash Redis sliding window, 30 req/min, keyed by `apiKeyId` (not IP,
   since students may share a classroom network).
 - `lib/audit-log.ts` — writes every request (success or failure) to `public.sql_audit_log`;
@@ -116,6 +147,9 @@ Postgres gotchas already hit and fixed here — don't reintroduce them:
   rather than fire-and-forget since a Vercel function can freeze right after the response.
 
 ### Adding a new REST route under `app/api/v1/`
+
+(For `app/api/v2/`, the same steps apply with `getQaApiV2Pool()`, `curso: 2` in `apiRoute`,
+and `lib/openapi-v2.ts`.)
 
 1. Zod schema(s) for GET query / POST-PATCH body — reuse the enum+transform pattern for boolean
    query params (`z.coerce.boolean()` incorrectly treats `"false"` as truthy).
