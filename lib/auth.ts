@@ -2,7 +2,7 @@ import type { Pool } from "pg";
 import { getMetaPool } from "./db";
 
 export type AuthResult =
-  | { ok: true; apiKeyId: string; label: string }
+  | { ok: true; apiKeyId: string; label: string; curso: number }
   | { ok: false; status: 401; message: string }
   | { ok: false; status: 500; message: string };
 
@@ -10,6 +10,9 @@ interface ApiKeyRow {
   id: string;
   label: string;
   active: boolean;
+  // Cohorte del alumno dueno de la key (1 = curso original, 2 = Productos
+  // Bancarios). Columna aditiva con DEFAULT 1, ver setup-db-v2.sql.
+  curso: number | null;
 }
 
 const GENERIC_UNAUTHORIZED = "Invalid or inactive API key.";
@@ -32,7 +35,7 @@ export async function authenticate(
   let rows: ApiKeyRow[];
   try {
     const result = await resolvedPool.query<ApiKeyRow>(
-      "SELECT id, label, active FROM public.api_keys WHERE api_key = $1 LIMIT 1",
+      "SELECT id, label, active, curso FROM public.api_keys WHERE api_key = $1 LIMIT 1",
       [apiKey],
     );
     rows = result.rows;
@@ -49,5 +52,7 @@ export async function authenticate(
     return { ok: false, status: 401, message: GENERIC_UNAUTHORIZED };
   }
 
-  return { ok: true, apiKeyId: row.id, label: row.label };
+  // El ?? 1 cubre el intervalo entre desplegar este codigo y correr
+  // setup-db-v2.sql: sin la columna todavia, toda key es del curso 1.
+  return { ok: true, apiKeyId: row.id, label: row.label, curso: Number(row.curso ?? 1) };
 }

@@ -5,6 +5,11 @@ Pruebas de Software practiquen consumo de APIs REST y obtención de datos dinám
 Postman. Se conecta a un schema aislado (`qa_training`) en Supabase Postgres, separado de
 cualquier dato de producción.
 
+Hoy sirve a **dos cursos a la vez desde el mismo deploy**: el curso original (10 grupos, rutas
+`/api/v1/**`, schema `qa_training`) y el curso 2 de Productos Bancarios (5 grupos, rutas
+`/api/v2/**`, schema `qa_training_v2`) — ver [Curso 2](#curso-2--productos-bancarios-apiv2).
+Los datos de una cohorte no son visibles ni modificables desde las rutas de la otra.
+
 Hay dos superficies, pensadas para objetivos distintos:
 
 - **Sandbox de SQL crudo** (`/api/v1/sql/select`, `/api/v1/sql/update`): los alumnos envían SQL
@@ -168,8 +173,12 @@ Settings → Environment Variables) y despliega. Las rutas de SQL corren en runt
 |---|---|---|
 | `/api/v1/sql/select` | POST | Ejecuta un statement SELECT |
 | `/api/v1/sql/update` | POST | Ejecuta un statement UPDATE (WHERE obligatorio) |
-| `/api/v1/docs` | GET | Spec OpenAPI en JSON |
-| `/docs` | — | UI interactiva (Scalar) sobre el spec |
+| `/api/v1/docs` | GET | Spec OpenAPI en JSON (curso 1) |
+| `/docs` | — | UI interactiva (Scalar) sobre el spec del curso 1 |
+| `/api/v2/sql/select` | POST | Igual que el anterior, sobre `qa_training_v2` (curso 2) |
+| `/api/v2/sql/update` | POST | Igual que el anterior, sobre `qa_training_v2` (curso 2) |
+| `/api/v2/docs` | GET | Spec OpenAPI en JSON (curso 2) |
+| `/docs/v2` | — | UI interactiva (Scalar) sobre el spec del curso 2 |
 
 Todas las requests a `/sql/*` requieren el header `x-api-key` y tienen un límite de 30
 requests/minuto por key.
@@ -311,3 +320,135 @@ pueden consultar las 15 vía los mismos roles `qa_reader`/`qa_writer`.
 Las columnas `activo`/`activa` marcadas arriba son las que agrega la migración aditiva
 descrita en el paso 2 — filtran qué filas devuelven los `GET` y sostienen los nuevos `DELETE`
 (soft-delete) de cada grupo.
+
+## Curso 2 — Productos Bancarios (`/api/v2`)
+
+El curso 2 (`inscripcion-grupo-2-banca-5-grupos.xlsx`) tiene 5 grupos y un dominio propio:
+cuentas, tarjetas, préstamos, transferencias/pagos y ahorros/depósitos. Tres de esos módulos
+chocan por nombre con recursos que ya usan los grupos del curso 1, así que **corre sobre un
+schema Postgres separado**, `qa_training_v2`, con sus propias tablas y su propio seed.
+
+| Grupo | Módulo | Tablas |
+|---|---|---|
+| 1 | Cuentas Bancarias | `cuentas`, `movimientos` |
+| 2 | Tarjetas de Crédito/Débito | `tarjetas` |
+| 3 | Préstamos | `prestamos`, `cuotas_prestamo` |
+| 4 | Transferencias y Pagos | `beneficiarios`, `transferencias` |
+| 5 | Ahorros y Depósitos | `ahorros`, `depositos` |
+| — | Soporte (dueño de todo lo demás) | `usuarios` |
+
+### Cómo conviven las dos cohortes sin pisarse
+
+Un solo repo y un solo deploy en Vercel; el aislamiento es de datos, en dos capas:
+
+1. **Schema distinto, impuesto por Postgres.** Los pools de `/api/v2` (`getQaApiV2Pool()`,
+   `getQaReaderV2Pool()`, `getQaWriterV2Pool()` en `lib/db.ts`) usan **los mismos roles y las
+   mismas connection strings** que los de v1 — lo único que cambia es
+   `options=-c search_path=qa_training_v2`. No hay variables de entorno ni roles nuevos. Una
+   consulta de v1 no ve las filas de v2 y viceversa; no depende de que ninguna ruta se acuerde
+   de filtrar por un `WHERE curso = ...`.
+2. **API keys atadas a un curso.** `public.api_keys.curso` (`smallint NOT NULL DEFAULT 1`):
+   las rutas de `/api/v2` declaran `curso: 2` en `apiRoute(...)`, así que una key del curso 1
+   recibe `403 FORBIDDEN` (y una key del curso 2 en `/api/v1` también). Las rutas de v1 no
+   declaran nada y siguen aceptando cualquier key válida, como antes.
+
+En el sandbox de SQL crudo el aislamiento lo agrega el validador de AST: `/api/v2/sql/*` pasa
+`schema: "qa_training_v2"` + `QA_TRAINING_V2_TABLES`, así que nombrar `qa_training.cuentas`
+desde el curso 2 se rechaza con `400` antes de tocar Postgres.
+
+### Setup (además del setup del curso 1)
+
+1. `scripts/setup-db-v2.sql` — crea el schema `qa_training_v2` con sus 10 tablas, agrega las
+   columnas `curso` a `public.api_keys` y `public.roster` (aditivo, `IF NOT EXISTS`, toda fila
+   existente queda en curso 1), y repite para el schema nuevo los GRANTs, los grants de
+   secuencias y las políticas RLS. **No toca `qa_training`.**
+2. `scripts/seed-data-v2.sql` — datos determinísticos: 8 usuarios, 12 cuentas, 20 movimientos,
+   10 tarjetas, 6 préstamos (25 cuotas), 10 beneficiarios, 12 transferencias, 6 planes de
+   ahorro y 6 depósitos.
+3. Alta de cada alumno del curso 2:
+
+```sql
+INSERT INTO public.api_keys (api_key, label, curso) VALUES
+  ('sbx_c2_alumno01_xxxxxxxxxxxx', 'c2_alumno01', 2);
+INSERT INTO public.roster (nombre, email, grupo, curso) VALUES
+  ('Nombre Apellido', 'alumno@email.com', 1, 2);
+```
+
+Desde la terminal (requiere `psql` y `DATABASE_URL_ADMIN`):
+
+```bash
+npm run db:setup:v2
+npm run db:seed:v2
+```
+
+> **Ya aplicado en `hocryhxndegslzfiwlnx`**: schema, GRANTs, RLS y seed cargados y verificados
+> (10 tablas con RLS y 30 políticas; `qa_api` con SELECT/INSERT/UPDATE y **sin DELETE** sobre
+> las 10; `qa_reader` solo SELECT; grants de secuencia para los `bigserial`).
+
+### Endpoints REST del curso 2
+
+Mismas convenciones que el curso 1: header `x-api-key`, 30 requests/minuto, `PUT` reemplaza
+solo campos de negocio, `DELETE` es soft-delete con `204`, y las acciones de negocio van por
+`POST`/`PATCH` sobre sub-rutas. Los endpoints que mueven dinero corren dentro de una
+transacción con `SELECT ... FOR UPDATE`.
+
+| Grupo | Método + Ruta | Descripción |
+|---|---|---|
+| — | `GET/POST /api/v2/usuarios`, `GET/PUT/DELETE /api/v2/usuarios/{id}` | CRUD de clientes (soporte de los 5 grupos) |
+| 1 | `GET/POST /api/v2/cuentas`, `GET/PUT/DELETE /api/v2/cuentas/{id}` | CRUD de cuentas (`?usuarioId=&estado=`) |
+| 1 | `GET /api/v2/cuentas/{id}/saldo` | Saldo actual + fecha del último movimiento |
+| 1 | `GET/POST /api/v2/cuentas/{id}/movimientos` | Ledger de la cuenta; el POST es depósito (`credito`) o retiro (`debito`): actualiza el saldo y guarda `saldo_posterior`, `409` si no alcanza |
+| 1 | `PATCH /api/v2/cuentas/{id}/estado` | `activa` / `bloqueada` / `cerrada` (cerrada es terminal y exige saldo 0) |
+| 2 | `GET/POST /api/v2/tarjetas`, `GET/PUT/DELETE /api/v2/tarjetas/{id}` | CRUD de tarjetas; el `disponible` viene calculado (`limite_credito - saldo_utilizado`) |
+| 2 | `POST /api/v2/tarjetas/{id}/bloquear`, `POST /api/v2/tarjetas/{id}/activar` | Bloquea / reactiva (una tarjeta vencida no se reactiva) |
+| 2 | `PATCH /api/v2/tarjetas/{id}/limite` | Cambia el límite; `400` si queda por debajo del saldo utilizado |
+| 3 | `GET/POST /api/v2/prestamos`, `GET/PUT/DELETE /api/v2/prestamos/{id}` | CRUD de préstamos (nacen en `solicitado`; el PUT solo aplica en ese estado) |
+| 3 | `POST /api/v2/prestamos/{id}/aprobar` | Aprueba y **genera el plan de cuotas** (cuota = `monto * (1 + tasa/100) / plazo`, vencimientos mensuales) |
+| 3 | `GET /api/v2/prestamos/{id}/cuotas` | Plan de cuotas (`?estado=pendiente|pagada|vencida`) |
+| 3 | `POST /api/v2/prestamos/{id}/cuotas/{numero}/pagar` | Paga una cuota y descuenta el saldo pendiente; el préstamo pasa a `pagado` al llegar a 0 |
+| 4 | `GET/POST /api/v2/beneficiarios`, `GET/PUT/DELETE /api/v2/beneficiarios/{id}` | CRUD de beneficiarios (`UNIQUE (usuario_id, numero_cuenta)` → `409`) |
+| 4 | `GET/POST /api/v2/transferencias`, `GET /api/v2/transferencias/{id}` | Transferencia interna (`cuentaDestinoId`) o externa (`beneficiarioId`) — exactamente uno de los dos; debita, acredita y escribe los movimientos |
+| 4 | `POST /api/v2/transferencias/{id}/anular` | Contraasiento: revierte saldos y deja la transferencia en `anulada` (no la borra) |
+| 5 | `GET/POST /api/v2/ahorros`, `GET/PUT/DELETE /api/v2/ahorros/{id}` | CRUD de planes de ahorro (incluye `falta_para_meta` calculado) |
+| 5 | `POST /api/v2/ahorros/{id}/aportar` | Debita la cuenta y suma al acumulado; `completado` al alcanzar la meta |
+| 5 | `GET/POST /api/v2/depositos`, `GET /api/v2/depositos/{id}` | Plazo fijo: constituirlo debita la cuenta; devuelve `interes_proyectado` y `dias_restantes` |
+| 5 | `POST /api/v2/depositos/{id}/cancelar` | Precancelación: acredita capital + interés **prorrateado** por los días transcurridos |
+
+Detalle completo (schemas de request/response y códigos de error) en **`/docs/v2`**; el spec
+JSON está en `/api/v2/docs`. `/docs` sigue mostrando el curso 1, y el header de ambas páginas
+tiene los links para saltar de una a la otra.
+
+Al catálogo de códigos de la tabla de arriba, el curso 2 suma **`403 Forbidden`** (`FORBIDDEN`):
+API key válida pero de la otra cohorte. Además usa `409 Conflict` no solo para violaciones de
+constraint unique, sino también para reglas de negocio sobre un recurso que sí existe (saldo
+insuficiente, cuota ya pagada, préstamo ya aprobado, cuenta bloqueada).
+
+### Tablas de práctica (`qa_training_v2`)
+
+| Tabla | Columnas | Grupo |
+|---|---|---|
+| `usuarios` | `id, nombre, email, documento_tipo, documento_numero, telefono, activo, created_at` | Soporte |
+| `cuentas` | `id, usuario_id, numero_cuenta, tipo_cuenta, moneda, saldo, estado, activa, created_at` | 1 |
+| `movimientos` | `id, cuenta_id, tipo, monto, saldo_posterior, referencia_tipo, referencia_id, descripcion, activo, created_at` | 1 |
+| `tarjetas` | `id, usuario_id, cuenta_id, tipo, marca, numero_enmascarado, limite_credito, saldo_utilizado, estado, fecha_vencimiento, activo, created_at` | 2 |
+| `prestamos` | `id, usuario_id, cuenta_id, monto_solicitado, tasa_interes, plazo_meses, saldo_pendiente, estado, activo, created_at` | 3 |
+| `cuotas_prestamo` | `id, prestamo_id, numero_cuota, monto, fecha_vencimiento, estado, fecha_pago, created_at` | 3 |
+| `beneficiarios` | `id, usuario_id, nombre, banco, numero_cuenta, alias, activo, created_at` | 4 |
+| `transferencias` | `id, cuenta_origen_id, cuenta_destino_id, beneficiario_id, monto, moneda, concepto, referencia, estado, activo, created_at` | 4 |
+| `ahorros` | `id, usuario_id, cuenta_id, nombre_meta, meta_monto, aporte_mensual, saldo_acumulado, tasa_anual, estado, activo, created_at` | 5 |
+| `depositos` | `id, usuario_id, cuenta_id, monto, tasa_anual, plazo_dias, fecha_inicio, fecha_vencimiento, interes_generado, estado, activo, created_at` | 5 |
+
+`disponible` (tarjetas), `falta_para_meta` (ahorros) e `interes_proyectado`/`dias_restantes`
+(depósitos) **no son columnas**: se calculan en el `SELECT` de cada endpoint para que no puedan
+quedar desincronizados con el saldo tras un `UPDATE` parcial.
+
+### Colección Postman del curso 2
+
+[`postman_collection_v2.json`](./postman_collection_v2.json) — 69 requests, una carpeta por
+grupo, con el mismo patrón que la colección del curso 1: el helper `utils.bodySqlRest(sql,
+params)` en el *Pre-request Script de la colección* (acá apunta a `/api/v2/sql/select`) y
+bodies JSON legibles donde solo el campo que varía es `{{variable}}`. La carpeta
+`E2E - Flujos con validacion SQL` valida contra la base que la transferencia, la aprobación de
+préstamo y el aporte a la meta de ahorro realmente quedaron escritos, e incluye el caso
+negativo del `403` cruzado entre cursos. Configura `baseUrl` y `apiKey` (una key **de curso 2**)
+antes de correr.

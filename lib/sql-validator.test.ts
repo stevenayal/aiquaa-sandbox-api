@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { validateSql } from "./sql-validator";
+import { validateSql, QA_TRAINING_V2_TABLES } from "./sql-validator";
 
 describe("validateSql — SELECT endpoint", () => {
   it("accepts a valid single-table SELECT", () => {
@@ -138,5 +138,54 @@ describe("validateSql — UPDATE endpoint", () => {
       requireWhere: true,
     });
     expect(result.ok).toBe(true);
+  });
+
+  // --- Curso 2 (schema qa_training_v2) ---
+  // El validador es el mismo; solo cambian el schema y la whitelist que le pasa
+  // cada ruta, asi que un SELECT de curso 2 no puede nombrar tablas del curso 1
+  // ni al reves.
+  const v2 = { schema: "qa_training_v2", allowedTables: QA_TRAINING_V2_TABLES };
+
+  it("accepts a SELECT against a qa_training_v2 table when the v2 whitelist is passed", () => {
+    const result = validateSql("SELECT * FROM prestamos WHERE id = $1", [1], {
+      expectedType: "select",
+      ...v2,
+    });
+    expect(result.ok).toBe(true);
+  });
+
+  it("rejects a v1-only table on a v2 request", () => {
+    const result = validateSql("SELECT * FROM facturas WHERE id = $1", [1], {
+      expectedType: "select",
+      ...v2,
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.message).toMatch(/facturas/);
+  });
+
+  it("rejects an explicitly schema-qualified qa_training table on a v2 request", () => {
+    const result = validateSql("SELECT * FROM qa_training.cuentas WHERE id = $1", [1], {
+      expectedType: "select",
+      ...v2,
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.message).toMatch(/qa_training_v2/);
+  });
+
+  it("rejects a v2-only table when no options are passed (curso 1 default)", () => {
+    const result = validateSql("SELECT * FROM prestamos WHERE id = $1", [1], {
+      expectedType: "select",
+    });
+    expect(result.ok).toBe(false);
+  });
+
+  it("requires WHERE on a v2 UPDATE, same as v1", () => {
+    const result = validateSql("UPDATE cuotas_prestamo SET estado = $1", ["pagada"], {
+      expectedType: "update",
+      requireWhere: true,
+      ...v2,
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.message).toMatch(/WHERE clause/i);
   });
 });

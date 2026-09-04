@@ -1,0 +1,2378 @@
+{
+  "info": {
+    "name": "aiquaa Sandbox API — Curso 2 (Productos Bancarios)",
+    "description": "Coleccion de practica del curso 2. Corre contra el mismo deploy que la v1 pero sobre /api/v2 y el schema qa_training_v2: los datos del curso 1 no se tocan. La `apiKey` tiene que ser una key de curso 2 — una key del curso 1 devuelve 403 FORBIDDEN en cualquier ruta /api/v2. Configura `baseUrl` y `apiKey` antes de correr.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Pre-request Script DE LA COLECCION (icono de la coleccion > pestaña",
+          "// \"Scripts\" > \"Pre-request script\"). Corre antes de CADA request, asi",
+          "// que es el lugar para declarar UNA sola vez los helpers y valores por",
+          "// defecto que todos los requests reutilizan.",
+          "",
+          "// 1) Helper reusable para consultar la BD via el sandbox SQL del curso 2.",
+          "//    Ojo: apunta a /api/v2/sql/select y solo puede nombrar tablas de",
+          "//    qa_training_v2 (usuarios, cuentas, movimientos, tarjetas, prestamos,",
+          "//    cuotas_prestamo, beneficiarios, transferencias, ahorros, depositos).",
+          "if (typeof utils === \"undefined\") {",
+          "  utils = {",
+          "    bodySqlRest: function (sql, params) {",
+          "      return {",
+          "        url: pm.collectionVariables.get(\"baseUrl\") + \"/api/v2/sql/select\",",
+          "        method: \"POST\",",
+          "        header: {",
+          "          \"Content-Type\": \"application/json\",",
+          "          \"x-api-key\": pm.collectionVariables.get(\"apiKey\")",
+          "        },",
+          "        body: {",
+          "          mode: \"raw\",",
+          "          raw: JSON.stringify({ sql: sql, params: params || [] })",
+          "        }",
+          "      };",
+          "    }",
+          "  };",
+          "}",
+          "",
+          "// 2) Defaults de los bodies. Se resetean antes de cada request; si un",
+          "//    item necesita otro caso, sobreescribe SOLO ese campo en su propio",
+          "//    Pre-request Script en vez de duplicar el body entero.",
+          "pm.collectionVariables.set(\"usuarioId\", 1);",
+          "pm.collectionVariables.set(\"cuentaId\", 1);",
+          "pm.collectionVariables.set(\"cuentaOrigenId\", 1);",
+          "pm.collectionVariables.set(\"cuentaDestinoId\", 3);",
+          "pm.collectionVariables.set(\"monto\", 25000);",
+          "pm.collectionVariables.set(\"concepto\", \"Pago de alquiler - E2E\");"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "https://aiquaa-sandbox-api.vercel.app",
+      "type": "string"
+    },
+    {
+      "key": "apiKey",
+      "value": "sbx_c2_alumno01_reemplazar",
+      "type": "string"
+    },
+    {
+      "key": "usuarioId",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "cuentaId",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "cuentaOrigenId",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "cuentaDestinoId",
+      "value": "3",
+      "type": "string"
+    },
+    {
+      "key": "monto",
+      "value": "25000",
+      "type": "string"
+    },
+    {
+      "key": "concepto",
+      "value": "Pago de alquiler - E2E",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "SQL - Sandbox del curso 2",
+      "description": "SELECT/UPDATE crudos validados por AST contra qa_training_v2.",
+      "item": [
+        {
+          "name": "SELECT cuentas de un usuario",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/sql/select",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "sql",
+                "select"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sql\": \"SELECT id, numero_cuenta, moneda, saldo, estado FROM cuentas WHERE usuario_id = $1\",\n  \"params\": [\n    1\n  ]\n}"
+            }
+          }
+        },
+        {
+          "name": "SELECT cuotas pendientes de un prestamo",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/sql/select",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "sql",
+                "select"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sql\": \"SELECT numero_cuota, monto, fecha_vencimiento FROM cuotas_prestamo WHERE prestamo_id = $1 AND estado = $2 ORDER BY numero_cuota\",\n  \"params\": [\n    2,\n    \"pendiente\"\n  ]\n}"
+            }
+          }
+        },
+        {
+          "name": "SELECT rechazado: tabla del curso 1 (espera 400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/sql/select",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "sql",
+                "select"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sql\": \"SELECT * FROM facturas\",\n  \"params\": []\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"400: la whitelist del curso 2 no incluye tablas del curso 1\", function () {",
+                  "  pm.response.to.have.status(400);",
+                  "  pm.expect(pm.response.json().error.code).to.eql(\"VALIDATION_ERROR\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "UPDATE descripcion de un movimiento",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/sql/update",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "sql",
+                "update"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sql\": \"UPDATE movimientos SET descripcion = $1 WHERE id = $2\",\n  \"params\": [\n    \"revisado por QA\",\n    1\n  ]\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Soporte - Usuarios",
+      "description": "Clientes del banco: dueños de todos los productos.",
+      "item": [
+        {
+          "name": "Listar usuarios",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/usuarios",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "usuarios"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Obtener usuario por id",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/usuarios/1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "usuarios",
+                "1"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Crear usuario",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/usuarios",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "usuarios"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"Nuevo Cliente\",\n  \"email\": \"nuevo.cliente@bancoqa.com\",\n  \"documentoTipo\": \"CI\",\n  \"documentoNumero\": \"4199999\",\n  \"telefono\": \"0981-199999\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Reemplazar datos de contacto",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/usuarios/1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "usuarios",
+                "1"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"Ana Torres\",\n  \"email\": \"ana.torres@bancoqa.com\",\n  \"telefono\": \"0981-100001\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Eliminar usuario (soft-delete)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/usuarios/8",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "usuarios",
+                "8"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Grupo 1 - Cuentas Bancarias",
+      "description": "Cuentas, saldos, estados y movimientos.",
+      "item": [
+        {
+          "name": "Listar cuentas",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/cuentas?usuarioId=1&estado=activa",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "cuentas"
+              ],
+              "query": [
+                {
+                  "key": "usuarioId",
+                  "value": "1",
+                  "disabled": false
+                },
+                {
+                  "key": "estado",
+                  "value": "activa",
+                  "disabled": false
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Obtener cuenta por id",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/cuentas/1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "cuentas",
+                "1"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Consultar saldo",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/cuentas/1/saldo",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "cuentas",
+                "1",
+                "saldo"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Listar movimientos de la cuenta",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/cuentas/1/movimientos?tipo=debito",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "cuentas",
+                "1",
+                "movimientos"
+              ],
+              "query": [
+                {
+                  "key": "tipo",
+                  "value": "debito",
+                  "disabled": false
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Abrir cuenta",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/cuentas",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "cuentas"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"usuarioId\": \"{{usuarioId}}\",\n  \"tipoCuenta\": \"ahorro\",\n  \"moneda\": \"PYG\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Depositar (movimiento credito)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/cuentas/1/movimientos",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "cuentas",
+                "1",
+                "movimientos"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tipo\": \"credito\",\n  \"monto\": 150000,\n  \"descripcion\": \"Deposito en ventanilla\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Retirar (movimiento debito)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/cuentas/1/movimientos",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "cuentas",
+                "1",
+                "movimientos"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tipo\": \"debito\",\n  \"monto\": 50000,\n  \"descripcion\": \"Retiro cajero\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Retiro sin saldo suficiente (espera 409)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/cuentas/1/movimientos",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "cuentas",
+                "1",
+                "movimientos"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tipo\": \"debito\",\n  \"monto\": 999999999,\n  \"descripcion\": \"Retiro imposible\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"409 CONFLICT por saldo insuficiente\", function () {",
+                  "  pm.response.to.have.status(409);",
+                  "  pm.expect(pm.response.json().error.code).to.eql(\"CONFLICT\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Bloquear cuenta",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/cuentas/9/estado",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "cuentas",
+                "9",
+                "estado"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"estado\": \"bloqueada\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Reactivar cuenta",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/cuentas/9/estado",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "cuentas",
+                "9",
+                "estado"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"estado\": \"activa\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Reemplazar tipo/moneda",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/cuentas/1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "cuentas",
+                "1"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tipoCuenta\": \"ahorro\",\n  \"moneda\": \"PYG\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Eliminar cuenta (soft-delete)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/cuentas/8",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "cuentas",
+                "8"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Grupo 2 - Tarjetas de Credito/Debito",
+      "description": "Limites, disponible, estado y vencimiento.",
+      "item": [
+        {
+          "name": "Listar tarjetas",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/tarjetas?usuarioId=1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "tarjetas"
+              ],
+              "query": [
+                {
+                  "key": "usuarioId",
+                  "value": "1",
+                  "disabled": false
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Listar tarjetas bloqueadas",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/tarjetas?estado=bloqueada",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "tarjetas"
+              ],
+              "query": [
+                {
+                  "key": "estado",
+                  "value": "bloqueada",
+                  "disabled": false
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Obtener tarjeta por id (incluye disponible)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/tarjetas/1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "tarjetas",
+                "1"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Emitir tarjeta de credito",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/tarjetas",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "tarjetas"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"usuarioId\": \"{{usuarioId}}\",\n  \"cuentaId\": \"{{cuentaId}}\",\n  \"tipo\": \"credito\",\n  \"marca\": \"visa\",\n  \"limiteCredito\": 5000000,\n  \"fechaVencimiento\": \"2030-12-31\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Bloquear tarjeta",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/tarjetas/1/bloquear",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "tarjetas",
+                "1",
+                "bloquear"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"motivo\": \"Robo denunciado\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Activar tarjeta",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/tarjetas/1/activar",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "tarjetas",
+                "1",
+                "activar"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Cambiar limite",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/tarjetas/1/limite",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "tarjetas",
+                "1",
+                "limite"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"limiteCredito\": 12000000\n}"
+            }
+          }
+        },
+        {
+          "name": "Limite menor al consumido (espera 400)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/tarjetas/1/limite",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "tarjetas",
+                "1",
+                "limite"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"limiteCredito\": 1\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"400 VALIDATION_ERROR: el limite no puede quedar bajo el saldo utilizado\", function () {",
+                  "  pm.response.to.have.status(400);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Reemplazar marca/vencimiento",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/tarjetas/1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "tarjetas",
+                "1"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"marca\": \"mastercard\",\n  \"fechaVencimiento\": \"2029-06-30\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Eliminar tarjeta (soft-delete)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/tarjetas/4",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "tarjetas",
+                "4"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Grupo 3 - Prestamos",
+      "description": "Solicitud, aprobacion, cuotas y saldo.",
+      "item": [
+        {
+          "name": "Listar prestamos",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/prestamos?usuarioId=1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "prestamos"
+              ],
+              "query": [
+                {
+                  "key": "usuarioId",
+                  "value": "1",
+                  "disabled": false
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Listar prestamos aprobados",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/prestamos?estado=aprobado",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "prestamos"
+              ],
+              "query": [
+                {
+                  "key": "estado",
+                  "value": "aprobado",
+                  "disabled": false
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Obtener prestamo por id",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/prestamos/2",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "prestamos",
+                "2"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Solicitar prestamo",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/prestamos",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "prestamos"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"usuarioId\": \"{{usuarioId}}\",\n  \"cuentaId\": \"{{cuentaId}}\",\n  \"montoSolicitado\": 6000000,\n  \"tasaInteres\": 17.5,\n  \"plazoMeses\": 12\n}"
+            }
+          }
+        },
+        {
+          "name": "Aprobar prestamo (genera el plan de cuotas)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/prestamos/1/aprobar",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "prestamos",
+                "1",
+                "aprobar"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 y el plan tiene una cuota por mes de plazo\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const data = pm.response.json().data;",
+                  "  pm.expect(data.cuotas.length).to.eql(data.plazo_meses);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Listar cuotas del prestamo",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/prestamos/2/cuotas",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "prestamos",
+                "2",
+                "cuotas"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Listar cuotas pendientes",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/prestamos/2/cuotas?estado=pendiente",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "prestamos",
+                "2",
+                "cuotas"
+              ],
+              "query": [
+                {
+                  "key": "estado",
+                  "value": "pendiente",
+                  "disabled": false
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Pagar una cuota",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/prestamos/2/cuotas/2/pagar",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "prestamos",
+                "2",
+                "cuotas",
+                "2",
+                "pagar"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Pagar una cuota ya pagada (espera 409)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/prestamos/2/cuotas/1/pagar",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "prestamos",
+                "2",
+                "cuotas",
+                "1",
+                "pagar"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"409 CONFLICT: la cuota ya estaba pagada\", function () {",
+                  "  pm.response.to.have.status(409);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Reemplazar condiciones (solo si esta solicitado)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/prestamos/5",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "prestamos",
+                "5"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"montoSolicitado\": 3500000,\n  \"tasaInteres\": 21,\n  \"plazoMeses\": 6\n}"
+            }
+          }
+        },
+        {
+          "name": "Eliminar prestamo (soft-delete)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/prestamos/6",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "prestamos",
+                "6"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Grupo 4 - Transferencias y Pagos",
+      "description": "Beneficiarios, importes y estados.",
+      "item": [
+        {
+          "name": "Listar beneficiarios",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/beneficiarios?usuarioId=1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "beneficiarios"
+              ],
+              "query": [
+                {
+                  "key": "usuarioId",
+                  "value": "1",
+                  "disabled": false
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Obtener beneficiario por id",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/beneficiarios/1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "beneficiarios",
+                "1"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Registrar beneficiario",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/beneficiarios",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "beneficiarios"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"usuarioId\": \"{{usuarioId}}\",\n  \"nombre\": \"Nuevo Beneficiario\",\n  \"banco\": \"Banco Continental\",\n  \"numeroCuenta\": \"2099999999\",\n  \"alias\": \"nuevo.benef\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Reemplazar beneficiario",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/beneficiarios/1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "beneficiarios",
+                "1"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"Maria Lopez\",\n  \"banco\": \"Banco Continental\",\n  \"numeroCuenta\": \"2000000001\",\n  \"alias\": \"maria.lopez\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Eliminar beneficiario (soft-delete)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/beneficiarios/8",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "beneficiarios",
+                "8"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Listar transferencias",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/transferencias?estado=completada",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "transferencias"
+              ],
+              "query": [
+                {
+                  "key": "estado",
+                  "value": "completada",
+                  "disabled": false
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Obtener transferencia por id",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/transferencias/1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "transferencias",
+                "1"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Transferencia interna",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/transferencias",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "transferencias"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cuentaOrigenId\": \"{{cuentaOrigenId}}\",\n  \"cuentaDestinoId\": \"{{cuentaDestinoId}}\",\n  \"monto\": \"{{monto}}\",\n  \"concepto\": \"{{concepto}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Transferencia a beneficiario externo",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/transferencias",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "transferencias"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cuentaOrigenId\": \"{{cuentaOrigenId}}\",\n  \"beneficiarioId\": 1,\n  \"monto\": \"{{monto}}\",\n  \"concepto\": \"Pago a proveedor\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Transferencia sin destino valido (espera 400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/transferencias",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "transferencias"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cuentaOrigenId\": 1,\n  \"cuentaDestinoId\": 3,\n  \"beneficiarioId\": 1,\n  \"monto\": 1000\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"400: hay que mandar cuentaDestinoId O beneficiarioId, no ambos\", function () {",
+                  "  pm.response.to.have.status(400);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Anular transferencia",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/transferencias/1/anular",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "transferencias",
+                "1",
+                "anular"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"motivo\": \"Cargo duplicado\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Grupo 5 - Ahorros y Depositos",
+      "description": "Tasas, plazos y vencimientos.",
+      "item": [
+        {
+          "name": "Listar planes de ahorro",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/ahorros?usuarioId=1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "ahorros"
+              ],
+              "query": [
+                {
+                  "key": "usuarioId",
+                  "value": "1",
+                  "disabled": false
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Obtener plan de ahorro por id",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/ahorros/1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "ahorros",
+                "1"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Crear plan de ahorro",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/ahorros",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "ahorros"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"usuarioId\": \"{{usuarioId}}\",\n  \"cuentaId\": \"{{cuentaId}}\",\n  \"nombreMeta\": \"Viaje 2027\",\n  \"metaMonto\": 10000000,\n  \"aporteMensual\": 400000,\n  \"tasaAnual\": 6.5\n}"
+            }
+          }
+        },
+        {
+          "name": "Aportar el monto mensual del plan",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/ahorros/1/aportar",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "ahorros",
+                "1",
+                "aportar"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Aportar un monto puntual",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/ahorros/1/aportar",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "ahorros",
+                "1",
+                "aportar"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"monto\": 100000\n}"
+            }
+          }
+        },
+        {
+          "name": "Reemplazar condiciones del plan",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/ahorros/1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "ahorros",
+                "1"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombreMeta\": \"Vacaciones 2027\",\n  \"metaMonto\": 12000000,\n  \"aporteMensual\": 500000,\n  \"tasaAnual\": 6.5\n}"
+            }
+          }
+        },
+        {
+          "name": "Eliminar plan (soft-delete)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/ahorros/6",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "ahorros",
+                "6"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Listar depositos a plazo",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/depositos?estado=activo",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "depositos"
+              ],
+              "query": [
+                {
+                  "key": "estado",
+                  "value": "activo",
+                  "disabled": false
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Obtener deposito por id",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/depositos/1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "depositos",
+                "1"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Constituir deposito a plazo",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/depositos",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "depositos"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"usuarioId\": \"{{usuarioId}}\",\n  \"cuentaId\": \"{{cuentaId}}\",\n  \"monto\": 1000000,\n  \"tasaAnual\": 10.5,\n  \"plazoDias\": 90\n}"
+            }
+          }
+        },
+        {
+          "name": "Cancelar deposito anticipadamente",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/depositos/2/cancelar",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "depositos",
+                "2",
+                "cancelar"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "E2E - Flujos con validacion SQL",
+      "description": "Cada request valida contra la BD (via /api/v2/sql/select) que la escritura realmente ocurrio.",
+      "item": [
+        {
+          "name": "Transferencia interna + verificar saldos y movimientos",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/transferencias",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "transferencias"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cuentaOrigenId\": \"{{cuentaOrigenId}}\",\n  \"cuentaDestinoId\": \"{{cuentaDestinoId}}\",\n  \"monto\": \"{{monto}}\",\n  \"concepto\": \"{{concepto}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"201 y la transferencia queda completada\", function () {",
+                  "  pm.response.to.have.status(201);",
+                  "  pm.expect(pm.response.json().data.estado).to.eql(\"completada\");",
+                  "});",
+                  "",
+                  "const trf = pm.response.json().data;",
+                  "const monto = Number(pm.collectionVariables.get(\"monto\"));",
+                  "",
+                  "// La verificacion real: el saldo en la BD, no solo lo que devolvio el API.",
+                  "pm.sendRequest(",
+                  "  utils.bodySqlRest(",
+                  "    \"SELECT id, saldo FROM cuentas WHERE id IN ($1, $2) ORDER BY id\",",
+                  "    [trf.cuenta_origen_id, trf.cuenta_destino_id]",
+                  "  ),",
+                  "  function (err, res) {",
+                  "    pm.test(\"el debito y el credito quedaron asentados en la BD\", function () {",
+                  "      const filas = res.json().data;",
+                  "      const origenPrevio = Number(pm.collectionVariables.get(\"saldoOrigenPrevio\"));",
+                  "      const destinoPrevio = Number(pm.collectionVariables.get(\"saldoDestinoPrevio\"));",
+                  "      pm.expect(Number(filas[0].saldo)).to.eql(origenPrevio - monto);",
+                  "      pm.expect(Number(filas[1].saldo)).to.eql(destinoPrevio + monto);",
+                  "    });",
+                  "  }",
+                  ");",
+                  "",
+                  "pm.sendRequest(",
+                  "  utils.bodySqlRest(",
+                  "    \"SELECT tipo, monto FROM movimientos WHERE referencia_tipo = $1 AND referencia_id = $2 ORDER BY tipo\",",
+                  "    [\"transferencia\", trf.id]",
+                  "  ),",
+                  "  function (err, res) {",
+                  "    pm.test(\"se escribieron los dos movimientos (credito y debito)\", function () {",
+                  "      const filas = res.json().data;",
+                  "      pm.expect(filas.length).to.eql(2);",
+                  "    });",
+                  "  }",
+                  ");"
+                ]
+              }
+            },
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Guarda el saldo previo de las dos cuentas para comparar despues.",
+                  "const sql = utils.bodySqlRest(",
+                  "  \"SELECT id, saldo FROM cuentas WHERE id IN ($1, $2) ORDER BY id\",",
+                  "  [pm.collectionVariables.get(\"cuentaOrigenId\"), pm.collectionVariables.get(\"cuentaDestinoId\")]",
+                  ");",
+                  "pm.sendRequest(sql, function (err, res) {",
+                  "  if (err) { return; }",
+                  "  const filas = res.json().data;",
+                  "  pm.collectionVariables.set(\"saldoOrigenPrevio\", Number(filas[0].saldo));",
+                  "  pm.collectionVariables.set(\"saldoDestinoPrevio\", Number(filas[1].saldo));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Aprobar prestamo + verificar cuotas en la BD",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/prestamos/5/aprobar",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "prestamos",
+                "5",
+                "aprobar"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 y el prestamo queda aprobado\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.json().data.estado).to.eql(\"aprobado\");",
+                  "});",
+                  "",
+                  "const prestamo = pm.response.json().data;",
+                  "pm.sendRequest(",
+                  "  utils.bodySqlRest(",
+                  "    \"SELECT count(*) AS cuotas, sum(monto) AS total FROM cuotas_prestamo WHERE prestamo_id = $1\",",
+                  "    [prestamo.id]",
+                  "  ),",
+                  "  function (err, res) {",
+                  "    pm.test(\"hay una cuota por mes y la suma cierra con el saldo pendiente\", function () {",
+                  "      const fila = res.json().data[0];",
+                  "      pm.expect(Number(fila.cuotas)).to.eql(prestamo.plazo_meses);",
+                  "      pm.expect(Number(fila.total)).to.eql(Number(prestamo.saldo_pendiente));",
+                  "    });",
+                  "  }",
+                  ");"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Aporte a meta de ahorro + verificar debito de la cuenta",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/ahorros/2/aportar",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "ahorros",
+                "2",
+                "aportar"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"monto\": 100000\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"201 y el saldo acumulado subio\", function () {",
+                  "  pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "const ahorro = pm.response.json().data;",
+                  "pm.sendRequest(",
+                  "  utils.bodySqlRest(",
+                  "    \"SELECT saldo FROM cuentas WHERE id = $1\",",
+                  "    [ahorro.cuenta_id]",
+                  "  ),",
+                  "  function (err, res) {",
+                  "    pm.test(\"el saldo de la cuenta en la BD coincide con el que devolvio el API\", function () {",
+                  "      pm.expect(Number(res.json().data[0].saldo)).to.eql(Number(ahorro.cuenta.saldo));",
+                  "    });",
+                  "  }",
+                  ");"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Key del curso 1 contra /api/v2 (espera 403)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/cuentas",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "cuentas"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"403 FORBIDDEN: la key no es del curso 2\", function () {",
+                  "  pm.response.to.have.status(403);",
+                  "  pm.expect(pm.response.json().error.code).to.eql(\"FORBIDDEN\");",
+                  "});"
+                ]
+              }
+            },
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Reemplaza esto por una API key REAL del curso 1 para ver el 403.",
+                  "// El aislamiento entre cohortes es doble: schema distinto en Postgres",
+                  "// y este chequeo de curso sobre la API key.",
+                  "pm.request.headers.upsert({ key: \"x-api-key\", value: \"sbx_key_de_curso_1\" });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Docs",
+      "description": "Spec OpenAPI del curso 2.",
+      "item": [
+        {
+          "name": "OpenAPI JSON (v2)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/docs",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "docs"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

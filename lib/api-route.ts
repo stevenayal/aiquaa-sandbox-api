@@ -7,6 +7,7 @@ import { errorResponse, rateLimitResponse } from "./errors";
 
 export interface RouteContext {
   apiKeyId: string;
+  curso: number;
   ip: string | null;
 }
 
@@ -23,6 +24,10 @@ export interface ApiRouteOptions<TInput> {
   // match TInput too.
   inputSchema: ZodType<TInput, ZodTypeDef, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
   handler: (input: TInput, ctx: RouteContext) => Promise<ApiRouteResult>;
+  // Cohorte a la que pertenece la ruta: las rutas de /api/v2 pasan `curso: 2`
+  // y solo aceptan keys de ese curso. Omitirlo (todas las rutas de /api/v1)
+  // deja la ruta abierta a cualquier key valida, igual que antes.
+  curso?: number;
 }
 
 type NextRouteParams = { params: Promise<Record<string, string>> };
@@ -32,6 +37,19 @@ type NextRouteParams = { params: Promise<Record<string, string>> };
 // normal response instead of exception-based control flow.
 export function notFound(message: string): ApiRouteResult {
   return { status: 404, body: { error: { code: "NOT_FOUND", message } } };
+}
+
+// Regla de negocio violada sobre un recurso que si existe (saldo
+// insuficiente, prestamo ya aprobado, cuota ya pagada). 409, no 400: el body
+// es valido, el estado actual del recurso es el que no permite la operacion.
+export function conflict(message: string): ApiRouteResult {
+  return { status: 409, body: { error: { code: "CONFLICT", message } } };
+}
+
+// Input semanticamente invalido que zod no puede validar solo (p. ej. un
+// limite de tarjeta menor al saldo ya utilizado, que depende de la fila).
+export function badRequest(message: string): ApiRouteResult {
+  return { status: 400, body: { error: { code: "VALIDATION_ERROR", message } } };
 }
 
 // Convenience for a successful DELETE (soft-delete) — RFC 7231 says 204
@@ -55,6 +73,17 @@ export function apiRoute<TInput>(options: ApiRouteOptions<TInput>) {
     const auth = await authenticate(request);
     if (!auth.ok) {
       return errorResponse(auth.status === 401 ? "UNAUTHORIZED" : "INTERNAL_ERROR", auth.message);
+    }
+
+    // Aislamiento entre cohortes: los datos ya viven en schemas distintos
+    // (qa_training vs qa_training_v2), este chequeo evita ademas que un alumno
+    // apunte sus tests a la version equivocada y no entienda por que "no hay
+    // datos". 403, no 401: la key es valida, simplemente no es de este curso.
+    if (options.curso != null && auth.curso !== options.curso) {
+      return errorResponse(
+        "FORBIDDEN",
+        `Esta API key pertenece al curso ${auth.curso} y esta ruta es del curso ${options.curso}.`,
+      );
     }
 
     const rateLimit = await checkRateLimit(auth.apiKeyId);
@@ -102,7 +131,11 @@ export function apiRoute<TInput>(options: ApiRouteOptions<TInput>) {
     const auditSql = `${request.method} ${url.pathname}`;
 
     try {
-      const result = await options.handler(input, { apiKeyId: auth.apiKeyId, ip });
+      const result = await options.handler(input, {
+        apiKeyId: auth.apiKeyId,
+        curso: auth.curso,
+        ip,
+      });
       await logAudit({
         apiKeyId: auth.apiKeyId,
         sql: auditSql,

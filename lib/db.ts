@@ -3,7 +3,15 @@ import { getEnv } from "./env";
 
 declare global {
   var __aiquaaPools:
-    | { reader?: Pool; writer?: Pool; meta?: Pool; api?: Pool }
+    | {
+        reader?: Pool;
+        writer?: Pool;
+        meta?: Pool;
+        api?: Pool;
+        readerV2?: Pool;
+        writerV2?: Pool;
+        apiV2?: Pool;
+      }
     | undefined;
 }
 
@@ -83,6 +91,36 @@ export function getQaApiPool(): Pool {
     pools.api = makePool(getEnv().DATABASE_URL_API, "qa_training");
   }
   return pools.api;
+}
+
+// --- Curso 2 (schema qa_training_v2) ---------------------------------------
+// Mismos roles y mismas connection strings que los pools de arriba: lo unico
+// que cambia es el search_path, asi que agregar la cohorte no necesito roles
+// ni variables de entorno nuevas. El aislamiento entre cursos lo impone
+// Postgres (una conexion con search_path=qa_training_v2 no ve las tablas de
+// qa_training sin calificar el schema, y el AST validator rechaza cualquier
+// referencia calificada al otro schema).
+
+export function getQaReaderV2Pool(): Pool {
+  if (!pools.readerV2) {
+    pools.readerV2 = makePool(getEnv().DATABASE_URL_READER, "qa_training_v2");
+  }
+  return pools.readerV2;
+}
+
+export function getQaWriterV2Pool(): Pool {
+  if (!pools.writerV2) {
+    pools.writerV2 = makePool(getEnv().DATABASE_URL_WRITER, "qa_training_v2");
+  }
+  return pools.writerV2;
+}
+
+// Equivalente de getQaApiPool() para las rutas REST fijas de /api/v2/**.
+export function getQaApiV2Pool(): Pool {
+  if (!pools.apiV2) {
+    pools.apiV2 = makePool(getEnv().DATABASE_URL_API, "qa_training_v2");
+  }
+  return pools.apiV2;
 }
 
 // Runs `fn` inside a BEGIN/COMMIT (ROLLBACK on error) on a single dedicated

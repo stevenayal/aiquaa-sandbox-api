@@ -20,6 +20,11 @@ export interface HandleSqlRequestOptions {
   // only touched once the request has passed auth/rate-limit/validation,
   // not merely because the route was hit.
   getPool: () => Pool;
+  // Cohorte de la ruta (ver apiRoute): /api/v2/sql/* pasa curso 2 + el schema
+  // y whitelist de tablas del curso 2. Omitidos = comportamiento de curso 1.
+  curso?: number;
+  schema?: string;
+  allowedTables?: readonly string[];
 }
 
 // Shared pipeline for /api/v1/sql/select and /api/v1/sql/update — the two
@@ -32,6 +37,13 @@ export async function handleSqlRequest(
   const auth = await authenticate(request);
   if (!auth.ok) {
     return errorResponse(auth.status === 401 ? "UNAUTHORIZED" : "INTERNAL_ERROR", auth.message);
+  }
+
+  if (options.curso != null && auth.curso !== options.curso) {
+    return errorResponse(
+      "FORBIDDEN",
+      `Esta API key pertenece al curso ${auth.curso} y esta ruta es del curso ${options.curso}.`,
+    );
   }
 
   const rateLimit = await checkRateLimit(auth.apiKeyId);
@@ -58,6 +70,8 @@ export async function handleSqlRequest(
   const validation = validateSql(body.sql, params, {
     expectedType: options.expectedType,
     requireWhere: options.requireWhere,
+    schema: options.schema,
+    allowedTables: options.allowedTables,
   });
   if (!validation.ok) {
     await logAudit({

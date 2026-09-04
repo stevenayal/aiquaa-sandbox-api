@@ -91,6 +91,7 @@ export const openApiSpec = {
                 type: "string",
                 enum: [
                   "UNAUTHORIZED",
+                  "FORBIDDEN",
                   "RATE_LIMITED",
                   "VALIDATION_ERROR",
                   "EXECUTION_ERROR",
