@@ -365,7 +365,10 @@ desde el curso 2 se rechaza con `400` antes de tocar Postgres.
 2. `scripts/seed-data-v2.sql` — datos determinísticos: 8 usuarios, 12 cuentas, 20 movimientos,
    10 tarjetas, 6 préstamos (25 cuotas), 10 beneficiarios, 12 transferencias, 6 planes de
    ahorro y 6 depósitos.
-3. Alta de cada alumno del curso 2:
+3. `scripts/setup-db-v2-group-logins.sql` — un login Postgres por grupo para practicar SQL
+   directo (ver [Acceso directo a la base](#acceso-directo-a-la-base-por-grupo)). Reemplazar los
+   `CHANGE_ME_...` antes de correrlo.
+4. Alta de cada alumno del curso 2:
 
 ```sql
 INSERT INTO public.api_keys (api_key, label, curso) VALUES
@@ -383,7 +386,33 @@ npm run db:seed:v2
 
 > **Ya aplicado en `hocryhxndegslzfiwlnx`**: schema, GRANTs, RLS y seed cargados y verificados
 > (10 tablas con RLS y 30 políticas; `qa_api` con SELECT/INSERT/UPDATE y **sin DELETE** sobre
-> las 10; `qa_reader` solo SELECT; grants de secuencia para los `bigserial`).
+> las 10; `qa_reader` solo SELECT; grants de secuencia para los `bigserial`). También están
+> creados los 5 logins de grupo (`qa_c2_g01`..`qa_c2_g05`, con sus 10 políticas
+> `qa_c2_group_all`) y las 6 API keys de curso 2 — passwords y keys repartidos por fuera del
+> repo.
+
+### Acceso directo a la base, por grupo
+
+Además de la API, cada grupo del curso 2 tiene un login Postgres propio para practicar SQL
+desde `psql`/DBeaver: `scripts/setup-db-v2-group-logins.sql` crea `qa_c2_g01`..`qa_c2_g05`
+(passwords `CHANGE_ME_...` en el repo — los reales se reparten por la planilla de clase, nunca
+se commitean).
+
+Cuelgan de un rol de grupo propio, `qa_c2_group`, con GRANTs y políticas RLS **solo** sobre
+`qa_training_v2`, y con `search_path = qa_training_v2, public`. No es un detalle cosmético: los
+logins del curso 1 (`qa_g01`..`qa_g10`) son miembros de `qa_api` — que tiene permisos sobre los
+dos schemas — y su `search_path` apunta a `qa_training`, así que reusarlos habría hecho que un
+`SELECT * FROM cuentas` de un alumno del curso 2 leyera (y con `UPDATE`, escribiera) los datos
+del curso 1 sin que nadie se diera cuenta. Con estos roles, `qa_training` responde
+`permission denied for schema` — verificado con una conexión real.
+
+Permisos: `SELECT`+`INSERT`+`UPDATE`, **sin `DELETE`** (mismo criterio que `qa_api`: un borrado
+real deja el sandbox inservible para el resto de la clase). `CONNECTION LIMIT 10` por grupo.
+
+Las API keys del curso 2 siguen el mismo corte: una por grupo (`c2_g01_cuentas`,
+`c2_g02_tarjetas`, `c2_g03_prestamos`, `c2_g04_transferencias`, `c2_g05_ahorros`) más una
+compartida de demo (`demo_test_c2`), todas con `curso = 2`. Una key por grupo le da a cada
+equipo sus propios 30 requests/minuto y deja el `sql_audit_log` separado por grupo.
 
 ### Endpoints REST del curso 2
 
