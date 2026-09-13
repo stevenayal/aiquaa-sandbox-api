@@ -208,6 +208,30 @@ describe("apiRoute", () => {
     expect(checkRateLimitMock).not.toHaveBeenCalled();
   });
 
+  it("is symmetric: a curso 2 key gets 403 on a curso 1 route too", async () => {
+    authenticateMock.mockResolvedValue({ ...okAuth, curso: 2 });
+    const handler = vi.fn();
+    const route = apiRoute({ curso: 1, inputSchema: z.object({}), handler });
+
+    const res = await route(req({ method: "POST", body: {} }));
+    const json = await res.json();
+
+    expect(res.status).toBe(403);
+    expect(json.error.code).toBe("FORBIDDEN");
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  it("leaves a route without `curso` open to keys from any curso", async () => {
+    authenticateMock.mockResolvedValue({ ...okAuth, curso: 2 });
+    const handler = vi.fn().mockResolvedValue({ body: {} });
+    const route = apiRoute({ inputSchema: z.object({}), handler });
+
+    const res = await route(req());
+
+    expect(res.status).toBe(200);
+    expect(handler).toHaveBeenCalled();
+  });
+
   it("runs the handler when the API key matches the route curso", async () => {
     authenticateMock.mockResolvedValue({ ...okAuth, curso: 2 });
     const handler = vi.fn().mockResolvedValue({ body: { data: [] } });

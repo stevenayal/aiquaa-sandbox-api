@@ -15,6 +15,9 @@ interface RosterRow {
   curso: number;
 }
 
+// Única ruta de /api/v1 SIN `curso` en apiRoute(): es la puerta de entrada del
+// frontend para AMBAS cohortes — con ella descubre a qué curso pertenece el
+// alumno antes de saber si tiene que usar /api/v1 o /api/v2.
 // Mapea el email real de un alumno a su cohorte (`curso`: 1 = curso original,
 // 2 = Productos Bancarios) y su grupo dentro de ella —
 // separado del recurso `roles` (Grupo 10, permisos de backoffice), que es

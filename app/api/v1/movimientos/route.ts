@@ -21,6 +21,7 @@ const postSchema = z.object({
 // movimientos es el ejemplo didáctico de GET/POST/PUT/DELETE completo sobre
 // la tabla que esos reportes consultan.
 export const GET = apiRoute({
+  curso: 1,
   inputSchema: getSchema,
   handler: async ({ usuarioId }) => {
     const pool = getQaApiPool();
@@ -35,6 +36,7 @@ export const GET = apiRoute({
 });
 
 export const POST = apiRoute({
+  curso: 1,
   inputSchema: postSchema,
   handler: async ({ usuarioId, tipoMovimiento, monto, referenciaId, descripcion }) => {
     const pool = getQaApiPool();

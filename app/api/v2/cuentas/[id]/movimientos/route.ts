@@ -60,9 +60,13 @@ export const POST = apiRoute({
         return conflict("Saldo insuficiente para el débito solicitado.");
       }
 
+      // $1::numeric explícito: sin el cast, `$1 * 1` hace que Postgres deduzca
+      // $1 como integer (toma el tipo del otro operando) y cualquier monto con
+      // centavos — lo normal en una cuenta USD — falla con
+      // "invalid input syntax for type integer".
       const { rows: cuentaRows } = await client.query(
         `UPDATE cuentas
-            SET saldo = saldo + ($1 * CASE WHEN $2 = 'credito' THEN 1 ELSE -1 END)
+            SET saldo = saldo + ($1::numeric * CASE WHEN $2 = 'credito' THEN 1 ELSE -1 END)
           WHERE id = $3
           RETURNING *`,
         [monto, tipo, id],

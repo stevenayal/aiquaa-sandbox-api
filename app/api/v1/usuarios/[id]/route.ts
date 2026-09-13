@@ -19,6 +19,7 @@ const putSchema = z.object({
 });
 
 export const GET = apiRoute({
+  curso: 1,
   inputSchema: getSchema,
   handler: async ({ id }) => {
     const pool = getQaApiPool();
@@ -35,6 +36,7 @@ export const GET = apiRoute({
 // gobernado por PATCH /usuarios/{id}/kyc y activo por este mismo DELETE,
 // nunca por PUT, para no pisar esos endpoints dedicados.
 export const PUT = apiRoute({
+  curso: 1,
   inputSchema: putSchema,
   handler: async ({ id, nombre, email, documentoTipo, documentoNumero, fechaNacimiento, direccion }) => {
     const pool = getQaApiPool();
@@ -52,6 +54,7 @@ export const PUT = apiRoute({
 });
 
 export const DELETE = apiRoute({
+  curso: 1,
   inputSchema: getSchema,
   handler: async ({ id }) => {
     const pool = getQaApiPool();

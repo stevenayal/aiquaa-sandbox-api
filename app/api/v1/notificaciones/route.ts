@@ -22,6 +22,7 @@ const postSchema = z.object({
 });
 
 export const GET = apiRoute({
+  curso: 1,
   inputSchema: getSchema,
   handler: async ({ usuarioId, leido }) => {
     const pool = getQaApiPool();
@@ -45,6 +46,7 @@ export const GET = apiRoute({
 });
 
 export const POST = apiRoute({
+  curso: 1,
   inputSchema: postSchema,
   handler: async ({ usuarioId, canal, asunto, mensaje }) => {
     const pool = getQaApiPool();

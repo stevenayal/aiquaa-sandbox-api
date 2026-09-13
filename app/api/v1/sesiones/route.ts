@@ -20,6 +20,7 @@ const postSchema = z.object({
 // |reset-password siguen siendo el flujo realista con su propia lógica; este
 // endpoint es el ejemplo didáctico de GET/POST/PUT/DELETE completo.
 export const GET = apiRoute({
+  curso: 1,
   inputSchema: getSchema,
   handler: async ({ usuarioId }) => {
     const pool = getQaApiPool();
@@ -34,6 +35,7 @@ export const GET = apiRoute({
 });
 
 export const POST = apiRoute({
+  curso: 1,
   inputSchema: postSchema,
   handler: async ({ usuarioId, tipoEvento, exitoso, ip, userAgent }) => {
     const pool = getQaApiPool();

@@ -87,12 +87,24 @@ export const POST = apiRoute({
         "UPDATE cuentas SET saldo = saldo - $1 WHERE id = $2 RETURNING *",
         [monto, cuentaOrigenId],
       );
+      // El sufijo de la referencia va como su propio parámetro de texto ($7), no
+      // reusando $1: Postgres deduce UN tipo por parámetro, y $1 no puede ser a la
+      // vez bigint (cuenta_origen_id) y text (concatenación) — falla con
+      // "inconsistent types deduced for parameter $1" en cada transferencia.
       const { rows: trfRows } = await client.query(
         `INSERT INTO transferencias
            (cuenta_origen_id, cuenta_destino_id, beneficiario_id, monto, moneda, concepto, referencia, estado)
-         VALUES ($1, $2, $3, $4, $5, $6, 'TRF-' || to_char(now(), 'YYYYMMDDHH24MISSMS') || '-' || $1, 'completada')
+         VALUES ($1, $2, $3, $4, $5, $6, 'TRF-' || to_char(now(), 'YYYYMMDDHH24MISSMS') || '-' || $7, 'completada')
          RETURNING *`,
-        [cuentaOrigenId, cuentaDestinoId ?? null, beneficiarioId ?? null, monto, origen.moneda, concepto ?? null],
+        [
+          cuentaOrigenId,
+          cuentaDestinoId ?? null,
+          beneficiarioId ?? null,
+          monto,
+          origen.moneda,
+          concepto ?? null,
+          String(cuentaOrigenId),
+        ],
       );
       const transferencia = trfRows[0];
 

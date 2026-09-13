@@ -20,8 +20,9 @@ export interface HandleSqlRequestOptions {
   // only touched once the request has passed auth/rate-limit/validation,
   // not merely because the route was hit.
   getPool: () => Pool;
-  // Cohorte de la ruta (ver apiRoute): /api/v2/sql/* pasa curso 2 + el schema
-  // y whitelist de tablas del curso 2. Omitidos = comportamiento de curso 1.
+  // Cohorte de la ruta (ver apiRoute): /api/v1/sql/* pasa curso 1 y
+  // /api/v2/sql/* pasa curso 2 + el schema y la whitelist de tablas del curso 2.
+  // schema/allowedTables omitidos = los del curso 1.
   curso?: number;
   schema?: string;
   allowedTables?: readonly string[];

@@ -9,6 +9,7 @@ const schema = z.object({
 });
 
 export const POST = apiRoute({
+  curso: 1,
   inputSchema: schema,
   handler: async ({ usuarioId }, ctx) => {
     const pool = getQaApiPool();

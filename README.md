@@ -256,6 +256,7 @@ devuelve el grupo de curso asignado a un email real de alumno — ver sección 5
 | `204 No Content` | DELETE exitoso (soft-delete) — sin body |
 | `400 Bad Request` | Campo requerido faltante/vacío o inválido (`VALIDATION_ERROR`); también violación de FK o CHECK en Postgres |
 | `401 Unauthorized` | API key ausente, inválida o inactiva |
+| `403 Forbidden` | API key válida pero de la otra cohorte (key de curso 2 en `/api/v1`, o de curso 1 en `/api/v2`) |
 | `404 Not Found` | Recurso inexistente o ya soft-eliminado (`activo=false`) |
 | `405 Method Not Allowed` | Verbo HTTP no soportado por la ruta (automático de Next.js, ninguna ruta lo devuelve a mano) |
 | `409 Conflict` | Violación de constraint unique en Postgres (ej. `numeroFactura`/`email`/`nombre` duplicado) |
@@ -347,10 +348,16 @@ Un solo repo y un solo deploy en Vercel; el aislamiento es de datos, en dos capa
    `options=-c search_path=qa_training_v2`. No hay variables de entorno ni roles nuevos. Una
    consulta de v1 no ve las filas de v2 y viceversa; no depende de que ninguna ruta se acuerde
    de filtrar por un `WHERE curso = ...`.
-2. **API keys atadas a un curso.** `public.api_keys.curso` (`smallint NOT NULL DEFAULT 1`):
-   las rutas de `/api/v2` declaran `curso: 2` en `apiRoute(...)`, así que una key del curso 1
-   recibe `403 FORBIDDEN` (y una key del curso 2 en `/api/v1` también). Las rutas de v1 no
-   declaran nada y siguen aceptando cualquier key válida, como antes.
+2. **API keys atadas a un curso, en los dos sentidos.** `public.api_keys.curso`
+   (`smallint NOT NULL DEFAULT 1`): las rutas de `/api/v1` declaran `curso: 1` y las de
+   `/api/v2` declaran `curso: 2` en `apiRoute(...)`/`handleSqlRequest(...)`, así que una key
+   de un curso contra las rutas del otro recibe `403 FORBIDDEN`. La única excepción es
+   `GET /api/v1/roster`, abierta a las dos cohortes: es la que usa el frontend para descubrir
+   a qué curso pertenece un alumno antes de saber qué versión llamar.
+
+   Al principio el gate era de un solo sentido (v1 no declaraba `curso`), y en producción una
+   key del curso 2 llegó a crear una transferencia en `/api/v1`. Con el gate simétrico eso
+   ya no es posible.
 
 En el sandbox de SQL crudo el aislamiento lo agrega el validador de AST: `/api/v2/sql/*` pasa
 `schema: "qa_training_v2"` + `QA_TRAINING_V2_TABLES`, así que nombrar `qa_training.cuentas`
@@ -365,7 +372,10 @@ desde el curso 2 se rechaza con `400` antes de tocar Postgres.
 2. `scripts/seed-data-v2.sql` — datos determinísticos: 8 usuarios, 12 cuentas, 20 movimientos,
    10 tarjetas, 6 préstamos (25 cuotas), 10 beneficiarios, 12 transferencias, 6 planes de
    ahorro y 6 depósitos.
-3. Alta de cada alumno del curso 2:
+3. `scripts/setup-db-v2-group-logins.sql` — un login Postgres por grupo para practicar SQL
+   directo (ver [Acceso directo a la base](#acceso-directo-a-la-base-por-grupo)). Reemplazar los
+   `CHANGE_ME_...` antes de correrlo.
+4. Alta de cada alumno del curso 2:
 
 ```sql
 INSERT INTO public.api_keys (api_key, label, curso) VALUES
@@ -383,7 +393,33 @@ npm run db:seed:v2
 
 > **Ya aplicado en `hocryhxndegslzfiwlnx`**: schema, GRANTs, RLS y seed cargados y verificados
 > (10 tablas con RLS y 30 políticas; `qa_api` con SELECT/INSERT/UPDATE y **sin DELETE** sobre
-> las 10; `qa_reader` solo SELECT; grants de secuencia para los `bigserial`).
+> las 10; `qa_reader` solo SELECT; grants de secuencia para los `bigserial`). También están
+> creados los 5 logins de grupo (`qa_c2_g01`..`qa_c2_g05`, con sus 10 políticas
+> `qa_c2_group_all`) y las 6 API keys de curso 2 — passwords y keys repartidos por fuera del
+> repo.
+
+### Acceso directo a la base, por grupo
+
+Además de la API, cada grupo del curso 2 tiene un login Postgres propio para practicar SQL
+desde `psql`/DBeaver: `scripts/setup-db-v2-group-logins.sql` crea `qa_c2_g01`..`qa_c2_g05`
+(passwords `CHANGE_ME_...` en el repo — los reales se reparten por la planilla de clase, nunca
+se commitean).
+
+Cuelgan de un rol de grupo propio, `qa_c2_group`, con GRANTs y políticas RLS **solo** sobre
+`qa_training_v2`, y con `search_path = qa_training_v2, public`. No es un detalle cosmético: los
+logins del curso 1 (`qa_g01`..`qa_g10`) son miembros de `qa_api` — que tiene permisos sobre los
+dos schemas — y su `search_path` apunta a `qa_training`, así que reusarlos habría hecho que un
+`SELECT * FROM cuentas` de un alumno del curso 2 leyera (y con `UPDATE`, escribiera) los datos
+del curso 1 sin que nadie se diera cuenta. Con estos roles, `qa_training` responde
+`permission denied for schema` — verificado con una conexión real.
+
+Permisos: `SELECT`+`INSERT`+`UPDATE`, **sin `DELETE`** (mismo criterio que `qa_api`: un borrado
+real deja el sandbox inservible para el resto de la clase). `CONNECTION LIMIT 10` por grupo.
+
+Las API keys del curso 2 siguen el mismo corte: una por grupo (`c2_g01_cuentas`,
+`c2_g02_tarjetas`, `c2_g03_prestamos`, `c2_g04_transferencias`, `c2_g05_ahorros`) más una
+compartida de demo (`demo_test_c2`), todas con `curso = 2`. Una key por grupo le da a cada
+equipo sus propios 30 requests/minuto y deja el `sql_audit_log` separado por grupo.
 
 ### Endpoints REST del curso 2
 
@@ -418,10 +454,25 @@ Detalle completo (schemas de request/response y códigos de error) en **`/docs/v
 JSON está en `/api/v2/docs`. `/docs` sigue mostrando el curso 1, y el header de ambas páginas
 tiene los links para saltar de una a la otra.
 
-Al catálogo de códigos de la tabla de arriba, el curso 2 suma **`403 Forbidden`** (`FORBIDDEN`):
-API key válida pero de la otra cohorte. Además usa `409 Conflict` no solo para violaciones de
+Mismo catálogo de códigos que la tabla de arriba, incluido `403 Forbidden` (`FORBIDDEN`) para
+una API key de la otra cohorte. Además usa `409 Conflict` no solo para violaciones de
 constraint unique, sino también para reglas de negocio sobre un recurso que sí existe (saldo
 insuficiente, cuota ya pagada, préstamo ya aprobado, cuenta bloqueada).
+
+### Tipos en las respuestas del curso 2
+
+Los pools de `/api/v2` usan parsers de tipo propios (`v2TypeParsers` en `lib/db.ts`) para que
+las respuestas coincidan con lo que dice `/docs/v2`:
+
+| Tipo Postgres | node-postgres por defecto | `/api/v2` |
+|---|---|---|
+| `bigint` (ids, FKs, `count(*)`) | `"1"` (string) | `1` (number) |
+| `date` (`fecha_vencimiento`, `fecha_inicio`) | `"2027-01-11T00:00:00.000Z"` | `"2027-01-11"` |
+| `numeric` (saldos, montos, tasas) | `"5000000.00"` (string) | `"5000000.00"` (string, sin cambios) |
+
+`numeric` sigue como string a propósito: convertirlo a number perdería centavos por punto
+flotante. El curso 1 mantiene el formato por defecto — sus alumnos ya tienen tests escritos
+contra él.
 
 ### Tablas de práctica (`qa_training_v2`)
 

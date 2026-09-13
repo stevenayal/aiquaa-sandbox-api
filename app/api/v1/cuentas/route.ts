@@ -15,6 +15,7 @@ const postSchema = z.object({
 });
 
 export const GET = apiRoute({
+  curso: 1,
   inputSchema: getSchema,
   handler: async ({ usuarioId }) => {
     const pool = getQaApiPool();
@@ -32,6 +33,7 @@ export const GET = apiRoute({
 // número al azar, igual que numero_enmascarado en tarjetas. saldo queda en 0
 // (default de la tabla): nada en este sandbox lo mueve todavía.
 export const POST = apiRoute({
+  curso: 1,
   inputSchema: postSchema,
   handler: async ({ usuarioId, tipoCuenta, moneda }) => {
     const pool = getQaApiPool();

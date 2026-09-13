@@ -12,6 +12,7 @@ const postSchema = z.object({
 });
 
 export const GET = apiRoute({
+  curso: 1,
   inputSchema: getSchema,
   handler: async () => {
     const pool = getQaApiPool();
@@ -23,6 +24,7 @@ export const GET = apiRoute({
 // nombre es un CHECK cerrado a 4 valores — duplicar uno existente devuelve
 // 409 (unique_violation) vía el mapeo centralizado en lib/api-route.ts.
 export const POST = apiRoute({
+  curso: 1,
   inputSchema: postSchema,
   handler: async ({ nombre, descripcion }) => {
     const pool = getQaApiPool();

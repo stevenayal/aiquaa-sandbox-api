@@ -1,8 +1,8 @@
 // Spec OpenAPI 3.1 del curso 2 (Productos Bancarios), hand-authored igual que
 // lib/openapi.ts. Archivo separado a propósito: el sidebar de Scalar de cada
 // curso muestra solo sus propias rutas, y un cambio en el temario de una
-// cohorte no puede romper la documentación de la otra. /docs carga los dos
-// specs y deja elegir con un selector.
+// cohorte no puede romper la documentación de la otra. Se renderiza en
+// /docs/v2 (y el curso 1 en /docs), con links cruzados en el header.
 function errRef(description: string) {
   return {
     description,
@@ -86,7 +86,9 @@ export const openApiSpecV2 = {
       "pero contra un schema Postgres separado (qa_training_v2): los datos del curso 1 y del " +
       "curso 2 no se tocan entre sí. Cada API key pertenece a un curso — una key del curso 1 " +
       "contra estas rutas recibe 403, y viceversa. Header obligatorio: x-api-key. " +
-      "Límite de 30 requests/minuto por key.",
+      "Límite de 30 requests/minuto por key. Tipos en las respuestas: los ids son números, " +
+      "las fechas `date` vienen como texto YYYY-MM-DD y los importes (`numeric`) como string " +
+      "para no perder centavos por punto flotante.",
   },
   servers: [{ url: "/" }],
   tags: [
