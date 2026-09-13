@@ -24,9 +24,10 @@ export interface ApiRouteOptions<TInput> {
   // match TInput too.
   inputSchema: ZodType<TInput, ZodTypeDef, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
   handler: (input: TInput, ctx: RouteContext) => Promise<ApiRouteResult>;
-  // Cohorte a la que pertenece la ruta: las rutas de /api/v2 pasan `curso: 2`
-  // y solo aceptan keys de ese curso. Omitirlo (todas las rutas de /api/v1)
-  // deja la ruta abierta a cualquier key valida, igual que antes.
+  // Cohorte a la que pertenece la ruta: /api/v1 pasa `curso: 1` y /api/v2 pasa
+  // `curso: 2`, y cada una solo acepta keys de su curso. Omitirlo deja la ruta
+  // abierta a cualquier key válida — hoy solo lo hace /api/v1/roster, que el
+  // frontend necesita para descubrir el curso del alumno.
   curso?: number;
 }
 
@@ -76,9 +77,10 @@ export function apiRoute<TInput>(options: ApiRouteOptions<TInput>) {
     }
 
     // Aislamiento entre cohortes: los datos ya viven en schemas distintos
-    // (qa_training vs qa_training_v2), este chequeo evita ademas que un alumno
-    // apunte sus tests a la version equivocada y no entienda por que "no hay
-    // datos". 403, no 401: la key es valida, simplemente no es de este curso.
+    // (qa_training vs qa_training_v2), pero sin este chequeo una key de un curso
+    // puede leer y ESCRIBIR los datos del otro — pasó en producción: una key de
+    // curso 2 creó una transferencia en /api/v1. 403, no 401: la key es
+    // válida, simplemente no es de este curso.
     if (options.curso != null && auth.curso !== options.curso) {
       return errorResponse(
         "FORBIDDEN",

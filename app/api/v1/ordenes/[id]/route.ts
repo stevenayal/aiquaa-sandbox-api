@@ -25,6 +25,7 @@ const putSchema = z.object({
 });
 
 export const GET = apiRoute({
+  curso: 1,
   inputSchema: getSchema,
   handler: async ({ id }) => {
     const pool = getQaApiPool();
@@ -43,6 +44,7 @@ export const GET = apiRoute({
 });
 
 export const PUT = apiRoute({
+  curso: 1,
   inputSchema: putSchema,
   handler: async ({ id, items }) => {
     const pool = getQaApiPool();
@@ -59,6 +61,7 @@ export const PUT = apiRoute({
 });
 
 export const DELETE = apiRoute({
+  curso: 1,
   inputSchema: getSchema,
   handler: async ({ id }) => {
     const pool = getQaApiPool();

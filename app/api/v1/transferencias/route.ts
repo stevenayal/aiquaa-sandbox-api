@@ -17,6 +17,7 @@ const postSchema = z.object({
 });
 
 export const GET = apiRoute({
+  curso: 1,
   inputSchema: getSchema,
   handler: async ({ cuentaOrigenId, cuentaDestinoId }) => {
     const pool = getQaApiPool();
@@ -46,6 +47,7 @@ export const GET = apiRoute({
 // transferencia como 'pendiente' — el saldo real queda para un endpoint
 // futuro (ej. PATCH /transferencias/:id/completar) si hace falta.
 export const POST = apiRoute({
+  curso: 1,
   inputSchema: postSchema,
   handler: async ({ cuentaOrigenId, cuentaDestinoId, monto, descripcion }) => {
     const pool = getQaApiPool();

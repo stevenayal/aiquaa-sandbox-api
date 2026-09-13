@@ -11,6 +11,7 @@ export async function POST(request: Request) {
     return await handleSqlRequest(request, {
       expectedType: "select",
       getPool: getQaReaderPool,
+      curso: 1,
     });
   } catch (e) {
     return errorResponse("INTERNAL_ERROR", "Unexpected server error.", (e as Error).message);

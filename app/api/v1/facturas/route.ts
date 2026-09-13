@@ -18,6 +18,7 @@ const postSchema = z.object({
 });
 
 export const GET = apiRoute({
+  curso: 1,
   inputSchema: getSchema,
   handler: async ({ usuarioId, estado }) => {
     const pool = getQaApiPool();
@@ -43,6 +44,7 @@ export const GET = apiRoute({
 // estado queda en 'pendiente' (default de la tabla) — pasar a 'pagada' sigue
 // siendo responsabilidad exclusiva de POST /facturas/{id}/pagar.
 export const POST = apiRoute({
+  curso: 1,
   inputSchema: postSchema,
   handler: async ({ usuarioId, proveedor, numeroFactura, monto, fechaVencimiento }) => {
     const pool = getQaApiPool();

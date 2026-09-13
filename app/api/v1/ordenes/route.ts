@@ -20,6 +20,7 @@ const postSchema = z.object({
 });
 
 export const GET = apiRoute({
+  curso: 1,
   inputSchema: getSchema,
   handler: async ({ usuarioId }) => {
     const pool = getQaApiPool();
@@ -37,6 +38,7 @@ export const GET = apiRoute({
 // mandado por el body. producto de la orden = el primer item, mismo
 // criterio que ya usa scripts/seed-data.sql.
 export const POST = apiRoute({
+  curso: 1,
   inputSchema: postSchema,
   handler: async ({ usuarioId, items }) => {
     return withTransaction(getQaApiPool(), async (client) => {

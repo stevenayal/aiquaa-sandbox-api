@@ -10,6 +10,7 @@ const schema = z.object({
 });
 
 export const POST = apiRoute({
+  curso: 1,
   inputSchema: schema,
   handler: async ({ id, metodoPago }) => {
     return withTransaction(getQaApiPool(), async (client) => {

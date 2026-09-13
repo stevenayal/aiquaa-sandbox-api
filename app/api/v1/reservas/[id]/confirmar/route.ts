@@ -9,6 +9,7 @@ const schema = z.object({
 });
 
 export const PATCH = apiRoute({
+  curso: 1,
   inputSchema: schema,
   handler: async ({ id }) => {
     const pool = getQaApiPool();

@@ -20,6 +20,7 @@ interface UsuarioRow {
 // sesiones. 400 (no 401) si no existe/está inactivo, para no confundirlo
 // con un fallo de autenticación de la API key.
 export const POST = apiRoute({
+  curso: 1,
   inputSchema: schema,
   handler: async ({ email }, ctx) => {
     const pool = getQaApiPool();

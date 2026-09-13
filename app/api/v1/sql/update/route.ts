@@ -12,6 +12,7 @@ export async function POST(request: Request) {
       expectedType: "update",
       requireWhere: true,
       getPool: getQaWriterPool,
+      curso: 1,
     });
   } catch (e) {
     return errorResponse("INTERNAL_ERROR", "Unexpected server error.", (e as Error).message);

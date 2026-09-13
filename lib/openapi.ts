@@ -10,8 +10,17 @@ function errRef(description: string) {
 }
 
 // Reused on every REST endpoint (all go through apiRoute(), which always
-// authenticates + rate-limits before the handler runs).
+// authenticates + rate-limits before the handler runs). Every /api/v1 route
+// except /roster also rejects API keys from curso 2 with 403.
 const authRateLimitErrors = {
+  "401": errRef("API key inválida, inactiva o ausente"),
+  "403": errRef("La API key pertenece al curso 2 (usar /api/v2)"),
+  "429": errRef("Límite de requests excedido"),
+};
+
+// /api/v1/roster is the one route open to both cohorts: the frontend uses it to
+// find out which curso a student belongs to before picking /api/v1 or /api/v2.
+const authRateLimitErrorsAnyCurso = {
   "401": errRef("API key inválida, inactiva o ausente"),
   "429": errRef("Límite de requests excedido"),
 };
@@ -363,6 +372,12 @@ export const openApiSpec = {
               "application/json": { schema: { $ref: "#/components/schemas/ErrorResponse" } },
             },
           },
+          "403": {
+            description: "La API key pertenece al curso 2 (usar /api/v2/sql/*)",
+            content: {
+              "application/json": { schema: { $ref: "#/components/schemas/ErrorResponse" } },
+            },
+          },
           "429": {
             description: "Límite de requests excedido",
             content: {
@@ -403,6 +418,12 @@ export const openApiSpec = {
           },
           "401": {
             description: "API key inválida, inactiva o ausente",
+            content: {
+              "application/json": { schema: { $ref: "#/components/schemas/ErrorResponse" } },
+            },
+          },
+          "403": {
+            description: "La API key pertenece al curso 2 (usar /api/v2/sql/*)",
             content: {
               "application/json": { schema: { $ref: "#/components/schemas/ErrorResponse" } },
             },
@@ -1768,7 +1789,7 @@ export const openApiSpec = {
           "200": { description: "Alumno encontrado", content: { "application/json": { schema: { type: "object", properties: { data: { $ref: "#/components/schemas/RosterEntry" } } } } } },
           ...notFoundError,
           ...validationError,
-          ...authRateLimitErrors,
+          ...authRateLimitErrorsAnyCurso,
         },
       },
     },

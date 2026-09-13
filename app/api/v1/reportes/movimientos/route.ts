@@ -11,6 +11,7 @@ const schema = z.object({
 });
 
 export const GET = apiRoute({
+  curso: 1,
   inputSchema: schema,
   handler: async ({ usuarioId, desde, hasta }) => {
     const pool = getQaApiPool();

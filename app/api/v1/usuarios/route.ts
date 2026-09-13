@@ -16,6 +16,7 @@ const postSchema = z.object({
 });
 
 export const GET = apiRoute({
+  curso: 1,
   inputSchema: getSchema,
   handler: async () => {
     const pool = getQaApiPool();
@@ -29,6 +30,7 @@ export const GET = apiRoute({
 // kyc_estado queda en 'pendiente' (default de la tabla) — el alta de un
 // usuario nuevo empieza sin verificar, matching el flujo real de onboarding.
 export const POST = apiRoute({
+  curso: 1,
   inputSchema: postSchema,
   handler: async ({ nombre, email, documentoTipo, documentoNumero, fechaNacimiento, direccion }) => {
     const pool = getQaApiPool();

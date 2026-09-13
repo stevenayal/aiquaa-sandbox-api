@@ -16,6 +16,7 @@ const postSchema = z.object({
 });
 
 export const GET = apiRoute({
+  curso: 1,
   inputSchema: getSchema,
   handler: async ({ usuarioId }) => {
     const pool = getQaApiPool();
@@ -30,6 +31,7 @@ export const GET = apiRoute({
 });
 
 export const POST = apiRoute({
+  curso: 1,
   inputSchema: postSchema,
   handler: async ({ usuarioId, servicio, fechaHora, notas }) => {
     const pool = getQaApiPool();

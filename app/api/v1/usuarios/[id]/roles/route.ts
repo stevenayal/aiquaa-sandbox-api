@@ -14,6 +14,7 @@ const postSchema = z.object({
 });
 
 export const GET = apiRoute({
+  curso: 1,
   inputSchema: getSchema,
   handler: async ({ id }) => {
     const pool = getQaApiPool();
@@ -38,6 +39,7 @@ export const GET = apiRoute({
 // 7231: 201 solo cuando de verdad se creó un recurso nuevo, 200 cuando el
 // upsert reactivó uno existente.
 export const POST = apiRoute({
+  curso: 1,
   inputSchema: postSchema,
   handler: async ({ id, roleId }) => {
     const pool = getQaApiPool();
