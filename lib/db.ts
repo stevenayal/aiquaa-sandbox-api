@@ -1,4 +1,4 @@
-import { Pool, type PoolClient } from "pg";
+import { Pool, types as pgTypes, type CustomTypesConfig, type PoolClient } from "pg";
 import { getEnv } from "./env";
 
 declare global {
@@ -34,7 +34,44 @@ function stripSslMode(connectionString: string): string {
   return url.toString();
 }
 
-function makePool(connectionString: string, searchPath?: string): Pool {
+// OIDs de Postgres (pg-types TypeId) cuyo parseo por defecto de node-postgres
+// no coincide con lo que documenta lib/openapi-v2.ts.
+const PG_INT8_OID = 20;
+const PG_DATE_OID = 1082;
+
+// Parsers de tipo SOLO para los pools del curso 2. Por defecto node-postgres:
+// - devuelve `bigint` como string ("1") para no perder precisión, pero el spec
+//   v2 documenta todos los ids como `integer`, y un test que compare
+//   `data.id === 1` falla. Los ids de un sandbox nunca se acercan a 2^53, así
+//   que se convierten a number (con fallback a string si alguna vez no entra).
+// - convierte `date` a un Date de JS a medianoche local, que se serializa como
+//   "2027-01-11T00:00:00.000Z" (o T03:00 con TZ de Paraguay), cuando el spec
+//   dice `format: date` ("2027-01-11"). Se devuelve el texto tal cual viene de
+//   Postgres.
+// `numeric` (saldos, montos) se deja como string a propósito: el spec lo
+// documenta así y es lo que evita errores de punto flotante.
+// Los pools del curso 1 NO usan esto — sus alumnos ya tienen tests escritos
+// contra el formato actual, y cambiarlo les rompería la cohorte a mitad de curso.
+export const v2TypeParsers: CustomTypesConfig = {
+  getTypeParser: ((oid: number, format?: "text" | "binary") => {
+    if (oid === PG_DATE_OID) return (value: string) => value;
+    if (oid === PG_INT8_OID) {
+      return (value: string) => {
+        const n = Number(value);
+        return Number.isSafeInteger(n) ? n : value;
+      };
+    }
+    return format === "binary"
+      ? pgTypes.getTypeParser(oid, "binary")
+      : pgTypes.getTypeParser(oid, "text");
+  }) as CustomTypesConfig["getTypeParser"],
+};
+
+function makePool(
+  connectionString: string,
+  searchPath?: string,
+  types?: CustomTypesConfig,
+): Pool {
   return new Pool({
     connectionString: stripSslMode(connectionString),
     // Supabase's pooler cert chain isn't always in Node's default trust
@@ -51,6 +88,7 @@ function makePool(connectionString: string, searchPath?: string): Pool {
     // pgbouncer transaction-mode pooling, where each query can land on a
     // different backend connection.
     ...(searchPath ? { options: `-c search_path=${searchPath}` } : {}),
+    ...(types ? { types } : {}),
   });
 }
 
@@ -103,14 +141,14 @@ export function getQaApiPool(): Pool {
 
 export function getQaReaderV2Pool(): Pool {
   if (!pools.readerV2) {
-    pools.readerV2 = makePool(getEnv().DATABASE_URL_READER, "qa_training_v2");
+    pools.readerV2 = makePool(getEnv().DATABASE_URL_READER, "qa_training_v2", v2TypeParsers);
   }
   return pools.readerV2;
 }
 
 export function getQaWriterV2Pool(): Pool {
   if (!pools.writerV2) {
-    pools.writerV2 = makePool(getEnv().DATABASE_URL_WRITER, "qa_training_v2");
+    pools.writerV2 = makePool(getEnv().DATABASE_URL_WRITER, "qa_training_v2", v2TypeParsers);
   }
   return pools.writerV2;
 }
@@ -118,7 +156,7 @@ export function getQaWriterV2Pool(): Pool {
 // Equivalente de getQaApiPool() para las rutas REST fijas de /api/v2/**.
 export function getQaApiV2Pool(): Pool {
   if (!pools.apiV2) {
-    pools.apiV2 = makePool(getEnv().DATABASE_URL_API, "qa_training_v2");
+    pools.apiV2 = makePool(getEnv().DATABASE_URL_API, "qa_training_v2", v2TypeParsers);
   }
   return pools.apiV2;
 }

@@ -256,6 +256,7 @@ devuelve el grupo de curso asignado a un email real de alumno — ver sección 5
 | `204 No Content` | DELETE exitoso (soft-delete) — sin body |
 | `400 Bad Request` | Campo requerido faltante/vacío o inválido (`VALIDATION_ERROR`); también violación de FK o CHECK en Postgres |
 | `401 Unauthorized` | API key ausente, inválida o inactiva |
+| `403 Forbidden` | API key válida pero de la otra cohorte (key de curso 2 en `/api/v1`, o de curso 1 en `/api/v2`) |
 | `404 Not Found` | Recurso inexistente o ya soft-eliminado (`activo=false`) |
 | `405 Method Not Allowed` | Verbo HTTP no soportado por la ruta (automático de Next.js, ninguna ruta lo devuelve a mano) |
 | `409 Conflict` | Violación de constraint unique en Postgres (ej. `numeroFactura`/`email`/`nombre` duplicado) |
@@ -347,10 +348,16 @@ Un solo repo y un solo deploy en Vercel; el aislamiento es de datos, en dos capa
    `options=-c search_path=qa_training_v2`. No hay variables de entorno ni roles nuevos. Una
    consulta de v1 no ve las filas de v2 y viceversa; no depende de que ninguna ruta se acuerde
    de filtrar por un `WHERE curso = ...`.
-2. **API keys atadas a un curso.** `public.api_keys.curso` (`smallint NOT NULL DEFAULT 1`):
-   las rutas de `/api/v2` declaran `curso: 2` en `apiRoute(...)`, así que una key del curso 1
-   recibe `403 FORBIDDEN` (y una key del curso 2 en `/api/v1` también). Las rutas de v1 no
-   declaran nada y siguen aceptando cualquier key válida, como antes.
+2. **API keys atadas a un curso, en los dos sentidos.** `public.api_keys.curso`
+   (`smallint NOT NULL DEFAULT 1`): las rutas de `/api/v1` declaran `curso: 1` y las de
+   `/api/v2` declaran `curso: 2` en `apiRoute(...)`/`handleSqlRequest(...)`, así que una key
+   de un curso contra las rutas del otro recibe `403 FORBIDDEN`. La única excepción es
+   `GET /api/v1/roster`, abierta a las dos cohortes: es la que usa el frontend para descubrir
+   a qué curso pertenece un alumno antes de saber qué versión llamar.
+
+   Al principio el gate era de un solo sentido (v1 no declaraba `curso`), y en producción una
+   key del curso 2 llegó a crear una transferencia en `/api/v1`. Con el gate simétrico eso
+   ya no es posible.
 
 En el sandbox de SQL crudo el aislamiento lo agrega el validador de AST: `/api/v2/sql/*` pasa
 `schema: "qa_training_v2"` + `QA_TRAINING_V2_TABLES`, así que nombrar `qa_training.cuentas`
@@ -447,10 +454,25 @@ Detalle completo (schemas de request/response y códigos de error) en **`/docs/v
 JSON está en `/api/v2/docs`. `/docs` sigue mostrando el curso 1, y el header de ambas páginas
 tiene los links para saltar de una a la otra.
 
-Al catálogo de códigos de la tabla de arriba, el curso 2 suma **`403 Forbidden`** (`FORBIDDEN`):
-API key válida pero de la otra cohorte. Además usa `409 Conflict` no solo para violaciones de
+Mismo catálogo de códigos que la tabla de arriba, incluido `403 Forbidden` (`FORBIDDEN`) para
+una API key de la otra cohorte. Además usa `409 Conflict` no solo para violaciones de
 constraint unique, sino también para reglas de negocio sobre un recurso que sí existe (saldo
 insuficiente, cuota ya pagada, préstamo ya aprobado, cuenta bloqueada).
+
+### Tipos en las respuestas del curso 2
+
+Los pools de `/api/v2` usan parsers de tipo propios (`v2TypeParsers` en `lib/db.ts`) para que
+las respuestas coincidan con lo que dice `/docs/v2`:
+
+| Tipo Postgres | node-postgres por defecto | `/api/v2` |
+|---|---|---|
+| `bigint` (ids, FKs, `count(*)`) | `"1"` (string) | `1` (number) |
+| `date` (`fecha_vencimiento`, `fecha_inicio`) | `"2027-01-11T00:00:00.000Z"` | `"2027-01-11"` |
+| `numeric` (saldos, montos, tasas) | `"5000000.00"` (string) | `"5000000.00"` (string, sin cambios) |
+
+`numeric` sigue como string a propósito: convertirlo a number perdería centavos por punto
+flotante. El curso 1 mantiene el formato por defecto — sus alumnos ya tienen tests escritos
+contra él.
 
 ### Tablas de práctica (`qa_training_v2`)
 

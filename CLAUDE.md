@@ -33,9 +33,21 @@ soft-deletes from breaking the other's tests. Rules:
   (and `getQaReaderV2Pool()`/`getQaWriterV2Pool()` for the sandbox), which reuse the *same*
   roles and connection strings as v1 and differ only in `search_path`. Don't add a `curso`
   column to the v1 tables, and don't point a v2 route at a v1 pool.
-- **Every `/api/v2` route passes `curso: 2` to `apiRoute()`/`handleSqlRequest()`** — a key from
-  the other cohort gets `403 FORBIDDEN` (`public.api_keys.curso`, default 1). v1 routes pass
-  nothing and stay open to any valid key.
+- **The curso gate is symmetric: every `/api/v1` route passes `curso: 1` and every `/api/v2`
+  route passes `curso: 2`** to `apiRoute()`/`handleSqlRequest()` — a key from the other cohort
+  gets `403 FORBIDDEN` (`public.api_keys.curso`, default 1). The only route without `curso` is
+  `GET /api/v1/roster`, which the frontend calls to discover a student's curso. New routes must
+  declare their curso; omitting it silently opens the route to both cohorts (it happened in
+  production: a curso 2 key created a transfer in `/api/v1` before the gate was symmetric).
+- **v2 pools use custom type parsers (`v2TypeParsers` in `lib/db.ts`)**: `bigint` → number and
+  `date` → `"YYYY-MM-DD"` text, to match `lib/openapi-v2.ts`. `numeric` stays a string. v1 pools
+  keep node-postgres defaults on purpose (curso 1 already has tests written against them).
+- **Never reuse one `$n` placeholder in two type contexts in the same statement** (e.g. as a
+  `bigint` column value *and* inside `'...' || $1`), and cast `$n` explicitly next to integer
+  literals (`$1::numeric * 1`, not `$1 * 1`, which makes Postgres infer `integer` and reject
+  cents). Both shipped to production in v2 and failed as "inconsistent types deduced for
+  parameter" / "invalid input syntax for type integer". Verifying SQL with literal values
+  (e.g. via the Supabase MCP) does **not** catch this — only real parameter binding does.
 - `lib/sql-validator.ts` keeps **two** table whitelists (`QA_TRAINING_TABLES`,
   `QA_TRAINING_V2_TABLES`); adding a table to either schema means adding it there too.
 - v2 has its own OpenAPI spec (`lib/openapi-v2.ts` → `/api/v2/docs`, rendered at `/docs/v2`)
