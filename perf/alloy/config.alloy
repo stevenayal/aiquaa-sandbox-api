@@ -1,0 +1,123 @@
+// Grafana Alloy: scrapea las cuatro fuentes de la demo y las empuja a
+// Grafana Cloud por remote_write.
+//
+//   1. cAdvisor          -> CPU/memoria/throttling del contenedor de la API
+//   2. postgres_exporter -> series temporales de pg_stat_* (la base)
+//   3. Vercel            -> /api/perf/metrics, auto-reporte por instancia
+//   4. Supabase          -> endpoint Prometheus gestionado (CPU/mem/disco de la DB)
+//
+// Las credenciales llegan por variable de entorno (ver perf/docker-compose.yml
+// y .env.example). Nunca se versionan.
+
+logging {
+  level  = "info"
+  format = "logfmt"
+}
+
+// ---------------------------------------------------------------------------
+// Destino unico: Hosted Prometheus de Grafana Cloud.
+// Home > Connections > Add new connection > Hosted Prometheus metrics
+// ---------------------------------------------------------------------------
+prometheus.remote_write "grafana_cloud" {
+  endpoint {
+    url = sys.env("GRAFANA_CLOUD_PROM_URL")
+
+    basic_auth {
+      username = sys.env("GRAFANA_CLOUD_PROM_USER")
+      password = sys.env("GRAFANA_CLOUD_PROM_TOKEN")
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 1. cAdvisor — el panel de sizing.
+//
+// Intervalo de 5s, no el default de 60s: una demo en vivo dura minutos y con
+// 60s la gráfica no alcanza a mostrar nada antes de que termines de hablar.
+// ---------------------------------------------------------------------------
+prometheus.scrape "cadvisor" {
+  targets = [
+    { __address__ = "cadvisor:8080", job = "cadvisor" },
+  ]
+  metrics_path    = "/metrics"
+  scrape_interval = "5s"
+  forward_to      = [prometheus.remote_write.grafana_cloud.receiver]
+}
+
+// ---------------------------------------------------------------------------
+// 2. postgres_exporter — conexiones, tps, cache hit ratio, bloat.
+//
+// Es lo que le da historia a pg_stat_*: consultado directo desde Grafana, cada
+// refresh da un único punto y no queda nada para mirar despues de la corrida.
+// ---------------------------------------------------------------------------
+prometheus.scrape "postgres" {
+  targets = [
+    { __address__ = "postgres-exporter:9187", job = "postgres" },
+  ]
+  metrics_path    = "/metrics"
+  scrape_interval = "10s"
+  forward_to      = [prometheus.remote_write.grafana_cloud.receiver]
+}
+
+// ---------------------------------------------------------------------------
+// 3. El deploy en Vercel — el contraste serverless.
+//
+// Auto-reporte: no hay cgroup que scrapear en una lambda, asi que el proceso
+// publica su propio rss/heap/cpu junto con un instance_id. Varias lambdas
+// reportan cada una lo suyo y por eso las series NO se suman.
+//
+// El endpoint exige API key. Se manda como header, no en la URL: una query
+// string termina en logs y en el historial del navegador.
+//
+// Intervalo de 15s: cada scrape consume presupuesto del rate limit de 30/min
+// de /api/perf/metrics, y ademas hace una consulta de percentiles contra
+// sql_audit_log. Bajarlo de 15s es medir el instrumento con el instrumento.
+// ---------------------------------------------------------------------------
+prometheus.scrape "vercel_self_report" {
+  targets = [
+    { __address__ = "aiquaa-sandbox-api.vercel.app", job = "aiquaa-vercel" },
+  ]
+  scheme          = "https"
+  metrics_path    = "/api/perf/metrics"
+  params          = { format = ["prometheus"], minutos = ["5"] }
+  scrape_interval = "15s"
+  scrape_timeout  = "10s"
+
+  http_headers = {
+    "x-api-key" = [sys.env("PERF_METRICS_API_KEY")],
+  }
+
+  forward_to = [prometheus.remote_write.grafana_cloud.receiver]
+}
+
+// ---------------------------------------------------------------------------
+// 4. Supabase — CPU/memoria/disco de la instancia de Postgres gestionada.
+//
+// VERIFICAR ANTES DE LA CHARLA: la disponibilidad de este endpoint depende del
+// plan. Comprobalo con
+//
+//   curl -u "service_role:<SERVICE_ROLE_KEY>" \
+//     https://hocryhxndegslzfiwlnx.supabase.co/customer/v1/privileged/metrics
+//
+// Si devuelve 404 o 401, comenta este bloque entero: el dashboard de Postgres
+// pierde solo el panel de CPU/memoria de la instancia; conexiones, tps, cache
+// hit ratio y pg_stat_statements siguen funcionando por el exporter de arriba.
+//
+// El usuario de basic auth es literalmente "service_role" y el password es la
+// service role key del proyecto.
+// ---------------------------------------------------------------------------
+// prometheus.scrape "supabase" {
+//   targets = [
+//     { __address__ = "hocryhxndegslzfiwlnx.supabase.co", job = "supabase-db" },
+//   ]
+//   scheme          = "https"
+//   metrics_path    = "/customer/v1/privileged/metrics"
+//   scrape_interval = "30s"
+//
+//   basic_auth {
+//     username = "service_role"
+//     password = sys.env("SUPABASE_SERVICE_ROLE_KEY")
+//   }
+//
+//   forward_to = [prometheus.remote_write.grafana_cloud.receiver]
+// }

@@ -1,8 +1,10 @@
 import type { Pool } from "pg";
 import { getMetaPool } from "./db";
+import { extractBearerToken, verifyGroupToken } from "./jwt";
+import { JWT_SUBJECT_PREFIX } from "./audit-log";
 
 export type AuthResult =
-  | { ok: true; apiKeyId: string; label: string; curso: number }
+  | { ok: true; apiKeyId: string; label: string; curso: number; grupo?: number }
   | { ok: false; status: 401; message: string }
   | { ok: false; status: 500; message: string };
 
@@ -15,8 +17,17 @@ interface ApiKeyRow {
   curso: number | null;
 }
 
-const GENERIC_UNAUTHORIZED = "Invalid or inactive API key.";
+const GENERIC_UNAUTHORIZED =
+  "Invalid or inactive credentials. Send an x-api-key header or an Authorization: Bearer <token>.";
 
+// Dos vias de autenticacion, con x-api-key con precedencia para no cambiarle
+// el comportamiento a nada de lo ya escrito por los alumnos:
+//
+//   1. x-api-key  -> public.api_keys (la via de siempre).
+//   2. Authorization: Bearer <jwt> -> token de grupo emitido por
+//      POST /api/v{1,2}/g{n}/auth/token. No toca la base: la firma ya prueba
+//      que el token lo emitimos nosotros, y lleva curso y grupo adentro.
+//
 // Accepts an injectable pool so callers (tests) don't need to mock the
 // module-level singleton in ./db.
 export async function authenticate(
@@ -24,7 +35,25 @@ export async function authenticate(
   pool?: Pick<Pool, "query">,
 ): Promise<AuthResult> {
   const apiKey = request.headers.get("x-api-key");
+
   if (!apiKey) {
+    const bearer = extractBearerToken(request.headers);
+    if (bearer) {
+      const claims = await verifyGroupToken(bearer);
+      if (!claims) {
+        return { ok: false, status: 401, message: GENERIC_UNAUTHORIZED };
+      }
+      // apiKeyId no es un uuid en esta via — lib/audit-log.ts lo detecta y lo
+      // escribe en la columna `subject` con api_key_id NULL, porque
+      // sql_audit_log.api_key_id tiene una FK contra public.api_keys.
+      return {
+        ok: true,
+        apiKeyId: `${JWT_SUBJECT_PREFIX}${claims.sub}`,
+        label: claims.sub,
+        curso: claims.curso,
+        grupo: claims.grupo,
+      };
+    }
     return { ok: false, status: 401, message: GENERIC_UNAUTHORIZED };
   }
 

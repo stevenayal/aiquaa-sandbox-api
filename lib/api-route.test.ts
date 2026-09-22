@@ -6,10 +6,17 @@ const checkRateLimitMock = vi.fn();
 const logAuditMock = vi.fn();
 
 vi.mock("./auth", () => ({ authenticate: authenticateMock }));
-vi.mock("./rate-limit", () => ({ checkRateLimit: checkRateLimitMock }));
+vi.mock("./rate-limit", () => ({
+  checkRateLimit: checkRateLimitMock,
+  DEFAULT_RATE_LIMIT: { requests: 30, windowSeconds: 60, bucket: "default" },
+  rateLimitMessage: (cfg: { requests: number; windowSeconds: number }) =>
+    `Rate limit exceeded. Max ${cfg.requests} requests per ${cfg.windowSeconds} seconds.`,
+}));
 vi.mock("./audit-log", () => ({
   logAudit: logAuditMock,
   extractClientIp: () => "127.0.0.1",
+  normalizeRoute: (pathname: string) => pathname,
+  JWT_SUBJECT_PREFIX: "jwt:",
 }));
 
 const { apiRoute, notFound, noContent } = await import("./api-route");
@@ -33,7 +40,10 @@ beforeEach(() => {
 });
 
 describe("apiRoute", () => {
-  it("returns 401 and skips the handler when authentication fails", async () => {
+  // El 401 ahora SI se audita (antes se devolvia antes de logAudit): sin esa
+  // fila no hay forma de ver un pico de keys invalidas en el dashboard. Va
+  // muestreado porque una corrida de carga mal configurada produce miles.
+  it("returns 401, skips the handler, and audits the rejection", async () => {
     authenticateMock.mockResolvedValue({ ok: false, status: 401, message: "nope" });
     const handler = vi.fn();
     const route = apiRoute({ inputSchema: z.object({}), handler });
@@ -42,7 +52,10 @@ describe("apiRoute", () => {
 
     expect(res.status).toBe(401);
     expect(handler).not.toHaveBeenCalled();
-    expect(logAuditMock).not.toHaveBeenCalled();
+    expect(logAuditMock).toHaveBeenCalledWith(
+      expect.objectContaining({ apiKeyId: "anon", success: false, statusCode: 401 }),
+      expect.objectContaining({ sampleRate: 0.1 }),
+    );
   });
 
   it("returns 429 and skips the handler when rate limited", async () => {
@@ -92,7 +105,13 @@ describe("apiRoute", () => {
 
     expect(handler).toHaveBeenCalledWith(
       { id: 1, extra: "fromBody" },
-      { apiKeyId: "key-1", curso: 1, ip: "127.0.0.1" },
+      {
+        apiKeyId: "key-1",
+        curso: 1,
+        grupo: undefined,
+        ip: "127.0.0.1",
+        headers: expect.any(Headers),
+      },
     );
   });
 
@@ -121,7 +140,15 @@ describe("apiRoute", () => {
     expect(res.status).toBe(201);
     expect(json).toEqual({ data: { id: 1 } });
     expect(logAuditMock).toHaveBeenCalledWith(
-      expect.objectContaining({ apiKeyId: "key-1", success: true }),
+      expect.objectContaining({
+        apiKeyId: "key-1",
+        success: true,
+        statusCode: 201,
+        method: "POST",
+        route: "/api/v1/widgets",
+        durationMs: expect.any(Number),
+      }),
+      expect.anything(),
     );
   });
 

@@ -2,6 +2,14 @@ import { Parser } from "node-sql-parser";
 
 export type StatementType = "select" | "update";
 
+// OMISIONES DELIBERADAS — no "arreglar" agregandolas:
+//   - credenciales        (qa_training y qa_training_v2): guarda los
+//     password_hash de los logins de grupo. Este whitelist es lo unico que
+//     impide que un alumno haga SELECT de los hashes desde /sql/select.
+//   - perf_carga, perf_idempotencia: infraestructura de la demo de
+//     rendimiento, no material del curso.
+// El resto de las tablas de qa_training si van aca: al agregar una tabla al
+// schema hay que sumarla a esta lista o el sandbox la rechaza por nombre.
 export const QA_TRAINING_TABLES = [
   "usuarios",
   "sesiones",
@@ -22,7 +30,8 @@ export const QA_TRAINING_TABLES = [
 
 // Tablas del schema del curso 2 (Productos Bancarios) — ver
 // scripts/setup-db-v2.sql. Al agregar una tabla a qa_training_v2 hay que
-// sumarla aca tambien, igual que con QA_TRAINING_TABLES.
+// sumarla aca tambien, igual que con QA_TRAINING_TABLES — con la misma
+// excepcion deliberada: qa_training_v2.credenciales NO va en esta lista.
 export const QA_TRAINING_V2_TABLES = [
   "usuarios",
   "cuentas",

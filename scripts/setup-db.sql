@@ -238,6 +238,16 @@ CREATE TABLE IF NOT EXISTS qa_training.tickets (
 -- -----------------------------------------------------------------------------
 
 ALTER TABLE qa_training.sesiones       ADD COLUMN IF NOT EXISTS activo boolean NOT NULL DEFAULT true;
+
+-- El CHECK de sesiones.tipo_evento es una lista cerrada: sin ampliarla, el
+-- nuevo POST /api/v1/g{n}/auth/token falla con 23514 al registrar el evento.
+-- DROP + ADD porque un CHECK no se puede ampliar en el lugar.
+ALTER TABLE qa_training.sesiones DROP CONSTRAINT IF EXISTS sesiones_tipo_evento_check;
+ALTER TABLE qa_training.sesiones ADD CONSTRAINT sesiones_tipo_evento_check
+  CHECK (tipo_evento IN (
+    'login', 'logout', 'password_reset_solicitado', 'password_reset_completado',
+    'token_emitido'
+  ));
 ALTER TABLE qa_training.transferencias ADD COLUMN IF NOT EXISTS activo boolean NOT NULL DEFAULT true;
 ALTER TABLE qa_training.facturas       ADD COLUMN IF NOT EXISTS activo boolean NOT NULL DEFAULT true;
 ALTER TABLE qa_training.tarjetas       ADD COLUMN IF NOT EXISTS activo boolean NOT NULL DEFAULT true;
@@ -246,6 +256,66 @@ ALTER TABLE qa_training.ordenes        ADD COLUMN IF NOT EXISTS activo boolean N
 ALTER TABLE qa_training.reservas       ADD COLUMN IF NOT EXISTS activo boolean NOT NULL DEFAULT true;
 ALTER TABLE qa_training.movimientos    ADD COLUMN IF NOT EXISTS activo boolean NOT NULL DEFAULT true;
 ALTER TABLE qa_training.roles          ADD COLUMN IF NOT EXISTS activo boolean NOT NULL DEFAULT true;
+
+-- -----------------------------------------------------------------------------
+-- 1c. Credenciales de grupo (login usuario + password -> JWT) y tablas de la
+--     suite de performance.
+--
+--     NINGUNA de estas tres tablas esta en QA_TRAINING_TABLES de
+--     lib/sql-validator.ts, y es deliberado: ese whitelist es lo que impide
+--     que un alumno lea los hashes desde /api/v1/sql/select. Agregarlas ahi
+--     elimina la proteccion.
+--
+--     Se crean aqui, ANTES de la seccion 2, para que los
+--     `GRANT ... ON ALL TABLES IN SCHEMA` y el bucle de RLS de mas abajo las
+--     cubran automaticamente, igual que a las 15 tablas originales.
+-- -----------------------------------------------------------------------------
+
+-- pgcrypto vive en el schema `extensions` en Supabase. El search_path de los
+-- pools de la app es solo `qa_training`, asi que la app llama a las funciones
+-- calificadas: extensions.crypt(...) / extensions.gen_salt(...).
+CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA extensions;
+
+CREATE TABLE IF NOT EXISTS qa_training.credenciales (
+  id            bigserial PRIMARY KEY,
+  usuario_id    bigint NOT NULL REFERENCES qa_training.usuarios (id),
+  username      text NOT NULL UNIQUE,
+  -- extensions.crypt(password, extensions.gen_salt('bf', 10)): bcrypt.
+  -- La verificacion tambien corre en la base
+  -- (password_hash = extensions.crypt($pwd, password_hash)), asi el password
+  -- en claro nunca sale del parametro de la query ni se compara en Node.
+  password_hash text NOT NULL,
+  grupo         smallint NOT NULL CHECK (grupo BETWEEN 1 AND 10),
+  activo        boolean NOT NULL DEFAULT true,
+  created_at    timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS credenciales_usuario_id_idx ON qa_training.credenciales (usuario_id);
+
+-- Carga sintetica para GET /api/perf/db. Tabla propia para poder estresarla
+-- sin tocar ni bloquear los datos del curso. La siembra scripts/seed-perf-data.sql
+-- (aparte de seed-data.sql: son ~100k filas y no deben correr en cada db:seed).
+CREATE TABLE IF NOT EXISTS qa_training.perf_carga (
+  id         bigserial PRIMARY KEY,
+  categoria  text NOT NULL,
+  -- `codigo` queda SIN indice a proposito: es el lado lento de ?indexed=false,
+  -- para mostrar en vivo un Seq Scan contra un Index Scan bajo carga.
+  codigo     text NOT NULL,
+  monto      numeric(14,2) NOT NULL,
+  payload    text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS perf_carga_categoria_idx ON qa_training.perf_carga (categoria);
+
+-- Control de idempotencia de POST /api/perf/db: la PK es la propia
+-- Idempotency-Key, asi un reintento concurrente choca contra el unique (23505)
+-- en vez de duplicar la transaccion.
+CREATE TABLE IF NOT EXISTS qa_training.perf_idempotencia (
+  clave      text PRIMARY KEY,
+  respuesta  jsonb NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
 
 -- -----------------------------------------------------------------------------
 -- 2. Sandbox roles: qa_reader (SELECT-only), qa_writer (UPDATE-only),
@@ -333,6 +403,13 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA qa_training GRANT SELECT, INSERT, UPDATE ON T
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA qa_training TO qa_api;
 ALTER DEFAULT PRIVILEGES IN SCHEMA qa_training GRANT USAGE, SELECT ON SEQUENCES TO qa_api;
 
+-- Defensa en profundidad sobre los hashes: los GRANT ... ON ALL TABLES de
+-- arriba alcanzan a credenciales igual que a cualquier otra tabla, y qa_reader
+-- respalda /api/v1/sql/select. Hoy el whitelist de lib/sql-validator.ts ya
+-- rechaza la tabla por nombre, pero si esa lista alguna vez tuviera un hueco
+-- el rol no debe poder leerla. qa_api si la necesita: es quien valida el login.
+REVOKE ALL ON qa_training.credenciales FROM qa_reader, qa_writer;
+
 -- If this Supabase project's API exposes the qa_training schema (or if
 -- you're not sure), the Postgres GRANTs above are not enough on their own
 -- — Supabase's PostgREST layer uses separate anon/authenticated roles that
@@ -402,6 +479,29 @@ CREATE TABLE IF NOT EXISTS public.sql_audit_log (
 
 CREATE INDEX IF NOT EXISTS sql_audit_log_api_key_id_idx ON public.sql_audit_log (api_key_id);
 CREATE INDEX IF NOT EXISTS sql_audit_log_created_at_idx ON public.sql_audit_log (created_at);
+
+-- Migracion aditiva: sin estas columnas la tabla no sirve como fuente de un
+-- dashboard. `success boolean` no alcanza — un 404 devuelto con notFound() se
+-- registra como success:true — y no habia NINGUNA medida de latencia.
+--
+-- `subject`: el sujeto autenticado cuando NO es una API key (un JWT de grupo).
+-- api_key_id tiene FK contra public.api_keys, asi que un id como
+-- 'jwt:g02_transf' la viola; lib/audit-log.ts detecta que no es un uuid y lo
+-- manda a esta columna con api_key_id NULL.
+--
+-- `route`: el template normalizado (/api/v1/cuentas/{id}), no el path concreto.
+-- Sin normalizar, cada id es una serie distinta en Grafana.
+ALTER TABLE public.sql_audit_log
+  ADD COLUMN IF NOT EXISTS duration_ms integer,
+  ADD COLUMN IF NOT EXISTS status_code smallint,
+  ADD COLUMN IF NOT EXISTS method      text,
+  ADD COLUMN IF NOT EXISTS route       text,
+  ADD COLUMN IF NOT EXISTS subject     text;
+
+-- Indice de las consultas del dashboard: siempre filtran por ventana de tiempo
+-- y agrupan por ruta.
+CREATE INDEX IF NOT EXISTS sql_audit_log_created_at_route_idx
+  ON public.sql_audit_log (created_at DESC, route);
 
 GRANT SELECT ON public.api_keys TO app_meta;
 GRANT SELECT, INSERT ON public.sql_audit_log TO app_meta;

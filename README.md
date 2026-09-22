@@ -44,7 +44,14 @@ Vía el SQL Editor de Supabase (o `psql`), en orden:
    de correrlo.** Si ya habías corrido una versión anterior del script (con solo 3 tablas),
    corré `DROP SCHEMA IF EXISTS qa_training CASCADE;` antes de re-ejecutarlo — es un sandbox
    sin datos de producción, y `seed-data.sql` trunca todo igual.
-2. `scripts/seed-data.sql` — datos de ejemplo determinísticos para las 15 tablas.
+2. `scripts/seed-data.sql` — datos de ejemplo determinísticos para las 15 tablas, más un
+   usuario y una credencial de login por cada uno de los 10 grupos.
+3. `scripts/seed-perf-data.sql` (opcional) — 100k filas sintéticas en `qa_training.perf_carga`
+   para la suite de rendimiento. Va aparte de `seed-data.sql` justamente porque son 100k
+   filas y no tienen por qué re-insertarse en cada `db:seed`.
+4. `scripts/setup-monitoring.sql` (opcional) — rol de solo lectura `qa_monitor` y la vista
+   `public.v_api_metrics`, para el datasource Postgres de Grafana. **Reemplazá
+   `CHANGE_ME_MONITOR_PASSWORD` antes de correrlo.**
 
 > **Ya aplicado en el proyecto `hocryhxndegslzfiwlnx` ("aiquaa-test-management")** vía el MCP
 > de Supabase — schema, roles, RLS y seed data ya están cargados y verificados con una
@@ -91,7 +98,18 @@ cp .env.example .env.local
 
 Completa `DATABASE_URL_READER` / `DATABASE_URL_WRITER` / `DATABASE_URL_API` /
 `DATABASE_URL_META` con las connection strings del **transaction pooler** de Supabase (puerto
-`6543`) para cada rol creado en el paso anterior, y las credenciales de Upstash Redis.
+`6543`) para cada rol creado en el paso anterior, las credenciales de Upstash Redis, y
+`JWT_SECRET`.
+
+`JWT_SECRET` firma los tokens de grupo y es **obligatorio** (mínimo 32 caracteres): sin él
+`getEnv()` falla al arrancar, a propósito — un secreto ausente tiene que romper el arranque,
+no degradar en silencio a tokens falsificables. Generalo con:
+
+```bash
+node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"
+```
+
+Rotarlo invalida todos los tokens emitidos; los alumnos simplemente vuelven a loguearse.
 
 Detalles verificados con conexiones reales contra `hocryhxndegslzfiwlnx`, incluyendo un test
 real contra el deploy de Vercel (ver comentarios en `.env.example`):
@@ -179,9 +197,90 @@ Settings → Environment Variables) y despliega. Las rutas de SQL corren en runt
 | `/api/v2/sql/update` | POST | Igual que el anterior, sobre `qa_training_v2` (curso 2) |
 | `/api/v2/docs` | GET | Spec OpenAPI en JSON (curso 2) |
 | `/docs/v2` | — | UI interactiva (Scalar) sobre el spec del curso 2 |
+| `/api/perf/*` | — | Suite de rendimiento (ver [perf/README.md](perf/README.md)) |
+| `/api/perf/docs` | GET | Spec OpenAPI en JSON (performance) |
+| `/docs/perf` | — | UI interactiva (Scalar) sobre el spec de performance |
 
 Todas las requests a `/sql/*` requieren el header `x-api-key` y tienen un límite de 30
 requests/minuto por key.
+
+### Autenticación: dos vías
+
+Hay dos formas de autenticarse, y cualquiera de las dos alcanza:
+
+```http
+x-api-key: sbx_alumno01_xxxxxxxxxxxx
+```
+
+```http
+Authorization: Bearer <jwt>
+```
+
+El JWT lo emite el endpoint de token del grupo (ver abajo). Si mandás las dos cosas,
+**`x-api-key` tiene precedencia** — nada de lo ya escrito cambia de comportamiento.
+
+#### Tokens de grupo: `POST /api/v{1,2}/g{n}/auth/token`
+
+Cada grupo tiene su propio endpoint de login con usuario y password, que devuelve un
+**JWT HS256 de 1 hora**. Sirve para practicar el flujo real de una suite automatizada:
+autenticar → extraer el token → encadenar el resto de las requests.
+
+```bash
+curl -X POST "$BASE/api/v1/g2/auth/token" \
+  -H "x-api-key: $APIKEY" -H "Content-Type: application/json" \
+  -d '{"username": "g02_transferencias", "password": "Grupo02!"}'
+```
+
+```json
+{
+  "data": {
+    "token": "eyJhbGciOiJIUzI1NiIs...",
+    "tokenType": "Bearer",
+    "expiresIn": 3600,
+    "grupo": 2,
+    "grupoNombre": "Transferencias entre Cuentas",
+    "curso": 1,
+    "usuario": { "id": 11, "nombre": "...", "email": "...", "username": "g02_transferencias" }
+  }
+}
+```
+
+El token está **firmado, no cifrado**: pegalo en [jwt.io](https://jwt.io) y vas a ver tu
+`grupo` y tu `curso` en claro. Ese es el punto didáctico.
+
+Credenciales sembradas por `npm run db:seed` / `npm run db:seed:v2` (son datos falsos en un
+sandbox, por eso están publicadas):
+
+| Curso | Grupo | Usuario | Password |
+|---|---|---|---|
+| 1 | 1 — Autenticación y Acceso | `g01_auth` | `Grupo01!` |
+| 1 | 2 — Transferencias entre Cuentas | `g02_transferencias` | `Grupo02!` |
+| 1 | 3 — Pagos de Servicios | `g03_pagos` | `Grupo03!` |
+| 1 | 4 — Onboarding / KYC | `g04_onboarding` | `Grupo04!` |
+| 1 | 5 — Tarjetas | `g05_tarjetas` | `Grupo05!` |
+| 1 | 6 — Notificaciones | `g06_notificaciones` | `Grupo06!` |
+| 1 | 7 — E-commerce | `g07_ecommerce` | `Grupo07!` |
+| 1 | 8 — Reservas | `g08_reservas` | `Grupo08!` |
+| 1 | 9 — Reportes | `g09_reportes` | `Grupo09!` |
+| 1 | 10 — Roles y Permisos | `g10_roles` | `Grupo10!` |
+| 2 | 1 — Cuentas Bancarias | `c2_g01_cuentas` | `Curso2Grupo01!` |
+| 2 | 2 — Tarjetas | `c2_g02_tarjetas` | `Curso2Grupo02!` |
+| 2 | 3 — Préstamos | `c2_g03_prestamos` | `Curso2Grupo03!` |
+| 2 | 4 — Transferencias y Pagos | `c2_g04_transferencias` | `Curso2Grupo04!` |
+| 2 | 5 — Ahorros y Depósitos | `c2_g05_ahorros` | `Curso2Grupo05!` |
+
+Códigos de respuesta del endpoint de token:
+
+| Código | Cuándo |
+|---|---|
+| `200` | Token emitido |
+| `400` | Usuario o password inválidos — mensaje genérico, no distingue cuál de los dos falló. **400 y no 401**: el 401 está reservado al fallo de autenticación de la API key |
+| `403` | Las credenciales son válidas pero son de otro grupo, o la API key es de otro curso |
+
+Los hashes viven en `qa_training.credenciales` / `qa_training_v2.credenciales` (bcrypt vía
+`pgcrypto`), y la comparación ocurre **dentro de Postgres** — el password en claro nunca sale
+del parámetro de la query. Esas tablas **no están en el whitelist de `lib/sql-validator.ts`**
+a propósito: el sandbox de SQL no puede leerlas.
 
 ### Body
 
@@ -205,7 +304,12 @@ requests/minuto por key.
 
 Rutas REST fijas (rol `qa_api`), organizadas por recurso — pensadas para que cada grupo
 automatice tests (BDD/Gherkin) contra su propio módulo, sin escribir SQL. Todas requieren el
-header `x-api-key` y comparten el mismo límite de 30 requests/minuto por key. Body en JSON;
+header `x-api-key` (o un `Authorization: Bearer`) y comparten el mismo límite de 30
+requests/minuto por key. Ese límite ahora es **configurable por ruta**: cada configuración
+tiene su propio bucket en Redis, así que la suite de rendimiento (`/api/perf/**`, hasta
+3000/min) no consume el presupuesto de las rutas del curso. Las respuestas exitosas también
+traen `X-RateLimit-Limit`/`-Remaining`/`-Reset` (el `Reset` va en **milisegundos** Unix), no
+solo el 429. Body en JSON;
 query/path params se coercionan automáticamente (ej. `?usuarioId=1` → `number`).
 
 Cada grupo expone ahora un ejemplo completo de **GET (lista + por id) / POST / PUT / DELETE**
@@ -218,6 +322,7 @@ real — ver nota de `qa_api` más arriba) y devuelve `204 No Content`.
 
 | Grupo | Módulo | Método + Ruta | Descripción |
 |---|---|---|---|
+| 1-10 | Todos los grupos | `POST /api/v1/g{n}/auth/token` | Login con usuario + password del grupo → JWT (ver «Tokens de grupo» arriba) |
 | 1 | Autenticación y Acceso | `POST /api/v1/auth/login` | Valida email de usuario activo, registra sesión |
 | 1 | Autenticación y Acceso | `POST /api/v1/auth/logout` | Registra evento de logout |
 | 1 | Autenticación y Acceso | `POST /api/v1/auth/forgot-password` | Registra solicitud de reset |
@@ -430,6 +535,7 @@ transacción con `SELECT ... FOR UPDATE`.
 
 | Grupo | Método + Ruta | Descripción |
 |---|---|---|
+| 1-5 | `POST /api/v2/g{n}/auth/token` | Login con usuario + password del grupo → JWT (ver «Tokens de grupo» arriba). A diferencia del curso 1, no deja fila en `sesiones`: el curso 2 no tiene esa tabla |
 | — | `GET/POST /api/v2/usuarios`, `GET/PUT/DELETE /api/v2/usuarios/{id}` | CRUD de clientes (soporte de los 5 grupos) |
 | 1 | `GET/POST /api/v2/cuentas`, `GET/PUT/DELETE /api/v2/cuentas/{id}` | CRUD de cuentas (`?usuarioId=&estado=`) |
 | 1 | `GET /api/v2/cuentas/{id}/saldo` | Saldo actual + fecha del último movimiento |
@@ -503,3 +609,39 @@ bodies JSON legibles donde solo el campo que varía es `{{variable}}`. La carpet
 préstamo y el aporte a la meta de ahorro realmente quedaron escritos, e incluye el caso
 negativo del `403` cruzado entre cursos. Configura `baseUrl` y `apiKey` (una key **de curso 2**)
 antes de correr.
+
+## Rendimiento y monitoreo (`/api/perf`)
+
+Superficie aparte, fuera de las dos cohortes, para pruebas de carga y para la demo en vivo de
+monitoreo. Documentación completa en **[perf/README.md](perf/README.md)**; el guion de la
+charla, en **[perf/README-charla.md](perf/README-charla.md)**.
+
+| Ruta | Límite | Para qué |
+|---|---|---|
+| `GET /api/perf/echo` | 3000/min | Baseline sin base de datos. `?delayMs=`, `?bytes=`, `?errorRate=` |
+| `GET /api/perf/echo-limited` | **10/min** | El mismo handler con límite bajo: la pared de 429 |
+| `GET /api/perf/db` | 1000/min | Carga real. `?mode=parametrizada\|literal`, `?indexed=true\|false` |
+| `POST /api/perf/db` | 300/min | Escritura con `Idempotency-Key` obligatorio |
+| `GET /api/perf/limits` | 30/min | Los techos conocidos del sistema |
+| `GET /api/perf/metrics` | 30/min | p50/p95/p99, tasa de error, consumo del proceso. `?format=prometheus` |
+
+Tres decisiones que conviene conocer antes de tocar esto:
+
+- **Rate limits por ruta, con buckets separados en Redis.** Estresar `/api/perf/echo` a
+  3000/min no consume el presupuesto de 30/min de las 72 rutas del curso. Dos límites que
+  compartieran `bucket` compartirían las claves de Redis y se vaciarían la ventana entre sí.
+- **Auditoría muestreada** en `/api/perf/**` (echo 5%, db 10%). A 3000 req/min el `INSERT` en
+  `sql_audit_log` —que va por el pool `app_meta` con `max: 1`— sería el cuello de botella de
+  la propia prueba. Como contrapartida, `requestsAuditados` no es el total real.
+- **`public.sql_audit_log` ganó `duration_ms`, `status_code`, `method`, `route` y `subject`.**
+  Sin eso no hay percentiles: `success` es un booleano que además vale `true` para los
+  404/409/400 devueltos con `notFound()`/`conflict()`/`badRequest()`. Los 401/403/429, que
+  antes no se registraban en absoluto, ahora sí (muestreados).
+
+### Antes de correr una prueba de carga
+
+`max_connections` en esta instancia es **60**, y es un recurso **global**: el proyecto
+Supabase aloja datos de producción ajenos fuera de `qa_training`. Acordá una ventana, arrancá
+con pocos hilos y subí mirando el panel de conexiones. Consultá `GET /api/perf/limits`
+primero — que es, literalmente, el punto de la charla sobre relevar los techos antes de
+diseñar la prueba.

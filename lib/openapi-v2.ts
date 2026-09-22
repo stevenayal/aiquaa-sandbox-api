@@ -75,6 +75,7 @@ const G4 = "Grupo 4 - Transferencias y Pagos";
 const G5 = "Grupo 5 - Ahorros y Depósitos";
 const SOPORTE = "Soporte - Usuarios";
 const SANDBOX = "SQL Sandbox (v2)";
+const TOKENS = "Tokens de grupo";
 
 export const openApiSpecV2 = {
   openapi: "3.1.0",
@@ -92,6 +93,7 @@ export const openApiSpecV2 = {
   },
   servers: [{ url: "/" }],
   tags: [
+    { name: TOKENS, description: "Login con usuario + password por grupo. Devuelve un JWT que sustituye a la x-api-key en el header Authorization." },
     { name: SANDBOX, description: "SQL crudo (SELECT/UPDATE validado por AST) sobre qa_training_v2." },
     { name: SOPORTE, description: "Clientes del banco: dueños de cuentas, tarjetas, préstamos y depósitos." },
     { name: G1, description: "Cuentas, saldos, estados y movimientos." },
@@ -103,8 +105,31 @@ export const openApiSpecV2 = {
   components: {
     securitySchemes: {
       ApiKeyAuth: { type: "apiKey", in: "header", name: "x-api-key" },
+      // Alternativa a la API key: el token de grupo de
+      // POST /api/v2/g{n}/auth/token.
+      BearerAuth: { type: "http", scheme: "bearer", bearerFormat: "JWT" },
     },
     schemas: {
+      GroupToken: {
+        type: "object",
+        properties: {
+          token: { type: "string", description: "JWT HS256. Pegalo en jwt.io para ver los claims." },
+          tokenType: { type: "string", enum: ["Bearer"] },
+          expiresIn: { type: "integer", description: "Segundos de vigencia (3600)." },
+          grupo: { type: "integer" },
+          grupoNombre: { type: "string" },
+          curso: { type: "integer" },
+          usuario: {
+            type: "object",
+            properties: {
+              id: { type: "integer" },
+              nombre: { type: "string" },
+              email: { type: "string" },
+              username: { type: "string" },
+            },
+          },
+        },
+      },
       SqlRequest: {
         type: "object",
         required: ["sql"],
@@ -326,8 +351,146 @@ export const openApiSpecV2 = {
       },
     },
   },
-  security: [{ ApiKeyAuth: [] }],
+  // Cualquiera de las dos alcanza (OR, no AND): x-api-key o Bearer.
+  security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }],
   paths: {
+    // --- Tokens de grupo (los 5 grupos del curso 2) ---
+    "/api/v2/g1/auth/token": {
+      post: {
+        tags: [TOKENS],
+        summary: "Obtener token de grupo (Grupo 1)",
+        description:
+          "Devuelve un JWT HS256 (1 h) para el Grupo 1. Se manda en las demas rutas como " +
+          "`Authorization: Bearer <token>`, en lugar de `x-api-key`. Credenciales sembradas: " +
+          "`c2_g01_cuentas` / `Curso2Grupo01!`. Credenciales de otro grupo: 403. " +
+          "Credenciales invalidas: 400 (el 401 esta reservado al fallo de la API key). " +
+          "A diferencia del curso 1, aca la emision no deja fila en `sesiones` — el curso 2 " +
+          "no tiene esa tabla.",
+        requestBody: body(["username", "password"], {
+          username: { type: "string", example: "c2_g01_cuentas" },
+          password: { type: "string", format: "password", example: "Curso2Grupo01!" },
+        }),
+        responses: {
+          "200": dataOf("GroupToken", "Token emitido"),
+          ...validationError,
+          ...authRateLimitErrors,
+          // Despues de los spreads a proposito: authRateLimitErrors ya trae un
+          // "403" generico de curso y aca hay un segundo motivo (grupo ajeno).
+          "403": errRef(
+            "Las credenciales pertenecen a otro grupo, o la API key es de otro curso",
+          ),
+        },
+      },
+    },
+    "/api/v2/g2/auth/token": {
+      post: {
+        tags: [TOKENS],
+        summary: "Obtener token de grupo (Grupo 2)",
+        description:
+          "Devuelve un JWT HS256 (1 h) para el Grupo 2. Se manda en las demas rutas como " +
+          "`Authorization: Bearer <token>`, en lugar de `x-api-key`. Credenciales sembradas: " +
+          "`c2_g02_tarjetas` / `Curso2Grupo02!`. Credenciales de otro grupo: 403. " +
+          "Credenciales invalidas: 400 (el 401 esta reservado al fallo de la API key). " +
+          "A diferencia del curso 1, aca la emision no deja fila en `sesiones` — el curso 2 " +
+          "no tiene esa tabla.",
+        requestBody: body(["username", "password"], {
+          username: { type: "string", example: "c2_g02_tarjetas" },
+          password: { type: "string", format: "password", example: "Curso2Grupo02!" },
+        }),
+        responses: {
+          "200": dataOf("GroupToken", "Token emitido"),
+          ...validationError,
+          ...authRateLimitErrors,
+          // Despues de los spreads a proposito: authRateLimitErrors ya trae un
+          // "403" generico de curso y aca hay un segundo motivo (grupo ajeno).
+          "403": errRef(
+            "Las credenciales pertenecen a otro grupo, o la API key es de otro curso",
+          ),
+        },
+      },
+    },
+    "/api/v2/g3/auth/token": {
+      post: {
+        tags: [TOKENS],
+        summary: "Obtener token de grupo (Grupo 3)",
+        description:
+          "Devuelve un JWT HS256 (1 h) para el Grupo 3. Se manda en las demas rutas como " +
+          "`Authorization: Bearer <token>`, en lugar de `x-api-key`. Credenciales sembradas: " +
+          "`c2_g03_prestamos` / `Curso2Grupo03!`. Credenciales de otro grupo: 403. " +
+          "Credenciales invalidas: 400 (el 401 esta reservado al fallo de la API key). " +
+          "A diferencia del curso 1, aca la emision no deja fila en `sesiones` — el curso 2 " +
+          "no tiene esa tabla.",
+        requestBody: body(["username", "password"], {
+          username: { type: "string", example: "c2_g03_prestamos" },
+          password: { type: "string", format: "password", example: "Curso2Grupo03!" },
+        }),
+        responses: {
+          "200": dataOf("GroupToken", "Token emitido"),
+          ...validationError,
+          ...authRateLimitErrors,
+          // Despues de los spreads a proposito: authRateLimitErrors ya trae un
+          // "403" generico de curso y aca hay un segundo motivo (grupo ajeno).
+          "403": errRef(
+            "Las credenciales pertenecen a otro grupo, o la API key es de otro curso",
+          ),
+        },
+      },
+    },
+    "/api/v2/g4/auth/token": {
+      post: {
+        tags: [TOKENS],
+        summary: "Obtener token de grupo (Grupo 4)",
+        description:
+          "Devuelve un JWT HS256 (1 h) para el Grupo 4. Se manda en las demas rutas como " +
+          "`Authorization: Bearer <token>`, en lugar de `x-api-key`. Credenciales sembradas: " +
+          "`c2_g04_transferencias` / `Curso2Grupo04!`. Credenciales de otro grupo: 403. " +
+          "Credenciales invalidas: 400 (el 401 esta reservado al fallo de la API key). " +
+          "A diferencia del curso 1, aca la emision no deja fila en `sesiones` — el curso 2 " +
+          "no tiene esa tabla.",
+        requestBody: body(["username", "password"], {
+          username: { type: "string", example: "c2_g04_transferencias" },
+          password: { type: "string", format: "password", example: "Curso2Grupo04!" },
+        }),
+        responses: {
+          "200": dataOf("GroupToken", "Token emitido"),
+          ...validationError,
+          ...authRateLimitErrors,
+          // Despues de los spreads a proposito: authRateLimitErrors ya trae un
+          // "403" generico de curso y aca hay un segundo motivo (grupo ajeno).
+          "403": errRef(
+            "Las credenciales pertenecen a otro grupo, o la API key es de otro curso",
+          ),
+        },
+      },
+    },
+    "/api/v2/g5/auth/token": {
+      post: {
+        tags: [TOKENS],
+        summary: "Obtener token de grupo (Grupo 5)",
+        description:
+          "Devuelve un JWT HS256 (1 h) para el Grupo 5. Se manda en las demas rutas como " +
+          "`Authorization: Bearer <token>`, en lugar de `x-api-key`. Credenciales sembradas: " +
+          "`c2_g05_ahorros` / `Curso2Grupo05!`. Credenciales de otro grupo: 403. " +
+          "Credenciales invalidas: 400 (el 401 esta reservado al fallo de la API key). " +
+          "A diferencia del curso 1, aca la emision no deja fila en `sesiones` — el curso 2 " +
+          "no tiene esa tabla.",
+        requestBody: body(["username", "password"], {
+          username: { type: "string", example: "c2_g05_ahorros" },
+          password: { type: "string", format: "password", example: "Curso2Grupo05!" },
+        }),
+        responses: {
+          "200": dataOf("GroupToken", "Token emitido"),
+          ...validationError,
+          ...authRateLimitErrors,
+          // Despues de los spreads a proposito: authRateLimitErrors ya trae un
+          // "403" generico de curso y aca hay un segundo motivo (grupo ajeno).
+          "403": errRef(
+            "Las credenciales pertenecen a otro grupo, o la API key es de otro curso",
+          ),
+        },
+      },
+    },
+
     // --- SQL sandbox del curso 2 ---
     "/api/v2/sql/select": {
       post: {

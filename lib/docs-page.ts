@@ -1,10 +1,11 @@
-// HTML compartido por /docs (curso 1) y /docs/v2 (curso 2): la única diferencia
-// entre las dos páginas es qué spec carga Scalar y cuál de los dos links del
+// HTML compartido por /docs (curso 1), /docs/v2 (curso 2) y /docs/perf: la
+// única diferencia entre las páginas es qué spec carga Scalar y cuál link del
 // header queda marcado como activo. Ver el comentario largo en app/docs/route.ts
 // sobre por qué Scalar se carga por CDN y no como paquete npm.
 const TABS: { href: string; label: string }[] = [
   { href: "/docs", label: "Curso 1 — 10 grupos" },
   { href: "/docs/v2", label: "Curso 2 — Productos Bancarios" },
+  { href: "/docs/perf", label: "Performance" },
 ];
 
 export function docsPage(options: {

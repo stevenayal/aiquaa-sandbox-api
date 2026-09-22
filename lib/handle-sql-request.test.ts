@@ -5,10 +5,17 @@ const checkRateLimitMock = vi.fn();
 const logAuditMock = vi.fn();
 
 vi.mock("./auth", () => ({ authenticate: authenticateMock }));
-vi.mock("./rate-limit", () => ({ checkRateLimit: checkRateLimitMock }));
+vi.mock("./rate-limit", () => ({
+  checkRateLimit: checkRateLimitMock,
+  DEFAULT_RATE_LIMIT: { requests: 30, windowSeconds: 60, bucket: "default" },
+  rateLimitMessage: (cfg: { requests: number; windowSeconds: number }) =>
+    `Rate limit exceeded. Max ${cfg.requests} requests per ${cfg.windowSeconds} seconds.`,
+}));
 vi.mock("./audit-log", () => ({
   logAudit: logAuditMock,
   extractClientIp: () => "127.0.0.1",
+  normalizeRoute: (pathname: string) => pathname,
+  JWT_SUBJECT_PREFIX: "jwt:",
 }));
 
 const { handleSqlRequest } = await import("./handle-sql-request");
