@@ -12,13 +12,16 @@ Supabase Postgres project** (`hocryhxndegslzfiwlnx`, "aiquaa-test-management") �
 also hosts unrelated production data outside `qa_training`, so changes to roles/grants/RLS
 must stay scoped to `qa_training` and never touch `public` or other schemas.
 
-Two independent surfaces exist side by side and must stay that way — don't merge or replace one with the other:
+Three independent surfaces exist side by side and must stay that way — don't merge or replace one with the other:
 
 1. **Raw-SQL sandbox** (`/api/v1/sql/select`, `/api/v1/sql/update`, plus their `/api/v2/sql/*`
    twins) — students submit SQL directly; the server validates the AST before executing.
 2. **Fixed REST endpoints by course group** (`/api/v1/auth/login`, `/api/v1/transferencias`,
    etc.) — 29 routes with SQL fixed at code-authoring time, for BDD/Gherkin test automation
    practice. See the route→group table in `README.md`.
+3. **Performance suite** (`/api/perf/**`) — surface designed to be load-tested, plus the
+   Grafana/JMeter material for a talk on performance and monitoring. Lives outside both
+   cohorts (no `curso`), has its own OpenAPI spec and its own docs tab. See `perf/README.md`.
 
 ### Two cohorts, two schemas — `/api/v1` (curso 1) and `/api/v2` (curso 2)
 
@@ -65,6 +68,8 @@ npm run test:watch      # vitest watch mode
 npx vitest run lib/foo.test.ts   # run a single test file
 npm run db:setup        # psql "$DATABASE_URL_ADMIN" -f scripts/setup-db.sql
 npm run db:seed         # psql "$DATABASE_URL_ADMIN" -f scripts/seed-data.sql
+npm run db:seed:perf         # 100k filas en qa_training.perf_carga (aparte de db:seed)
+npm run db:setup:monitoring  # rol qa_monitor + vista public.v_api_metrics (Grafana)
 ```
 
 There is no separate `tsc` script — `npm run build` is the type-check gate. Always run
@@ -92,6 +97,47 @@ pipeline, but via two different generic wrappers — don't add a third:
 
 Every route file under `app/api/v1/**` has `export const runtime = "nodejs"` — `pg` and
 `node-sql-parser` do not run under the Edge runtime.
+
+`apiRoute` also takes two optional knobs, both used only by `/api/perf/**`:
+`rateLimit` (a `RateLimitConfig`; omitted = the shared 30/min) and `auditSampleRate`.
+`RouteContext` carries `headers` (the raw request `Headers` — needed for `Idempotency-Key`,
+which is protocol metadata, not a parameter) and `grupo` (set only when the subject
+authenticated with a group JWT). `ApiRouteResult` takes an optional `headers` map; if the
+body is a string *and* a `content-type` is declared there, the response is sent as-is instead
+of through `NextResponse.json` (only `/api/perf/metrics?format=prometheus` does this).
+
+### Two ways to authenticate — `x-api-key` and `Authorization: Bearer`
+
+`lib/auth.ts` accepts either, with **`x-api-key` taking precedence** so nothing students
+already wrote changes behavior. The Bearer path verifies a group JWT (`lib/jwt.ts`, HS256 via
+`jose`, 1 h, `JWT_SECRET` required in `lib/env.ts`) and **never touches the database** — the
+signature already proves we minted it, and `curso`/`grupo` travel inside the token.
+
+Two consequences that are easy to get wrong:
+
+- **`apiKeyId` is no longer always a UUID.** On the Bearer path it is `jwt:<username>`.
+  `public.sql_audit_log.api_key_id` is `uuid REFERENCES public.api_keys(id)`, so writing that
+  there violates the FK — and because `logAudit` swallows errors, it would silently mean
+  *zero* audit rows for all JWT traffic. `splitSubject()` in `lib/audit-log.ts` tests the UUID
+  shape and routes anything else to the `subject` column with `api_key_id = NULL`.
+- **Tokens are group-scoped but nothing enforces a group gate on the course routes.** The
+  `grupo` claim is carried through to `RouteContext` and is currently unused; only the token
+  endpoint itself checks it (403 when a credential from another group hits its URL).
+
+The 15 token endpoints (`app/api/v{1,2}/g{n}/auth/token/route.ts`) are 4 lines each and all
+delegate to `groupTokenRoute()` in `lib/group-token-route.ts`, so they can't diverge. Group
+names and seeded usernames live in `lib/course-groups.ts`; the passwords are seeded in
+`scripts/seed-data*.sql` and published in `README.md` (fake data in a sandbox).
+
+Password verification happens **inside Postgres** (`password_hash = extensions.crypt($2,
+password_hash)`, bcrypt via `pgcrypto`) — the cleartext never leaves the bound parameter.
+`extensions.` must be spelled out: the pools' `search_path` is only `qa_training`.
+
+**`qa_training.credenciales`, `qa_training_v2.credenciales`, `perf_carga` and
+`perf_idempotencia` are deliberately absent from the whitelists in `lib/sql-validator.ts`** —
+that omission is what stops a student from `SELECT`ing the password hashes through
+`/sql/select`. `setup-db.sql` also revokes `credenciales` from `qa_reader`/`qa_writer` as
+defense in depth. Don't "fix" this by adding them to the lists.
 
 ### Postgres roles: four, each with a distinct purpose
 
@@ -145,18 +191,31 @@ Postgres gotchas already hit and fixed here — don't reintroduce them:
   single statement, only `qa_training` tables (`QA_TRAINING_TABLES`), correct statement type,
   WHERE required for UPDATE, placeholder count matches params. When a table is added to
   `qa_training`, add it to `QA_TRAINING_TABLES` too.
-- `lib/openapi.ts` / `lib/openapi-v2.ts` — hand-authored OpenAPI 3.1 specs (no zod-to-openapi
+- `lib/openapi.ts` / `lib/openapi-v2.ts` / `lib/openapi-perf.ts` — hand-authored OpenAPI 3.1 specs (no zod-to-openapi
   generator), served by `app/api/v1/docs` / `app/api/v2/docs` and rendered at `/docs` and
   `/docs/v2` via Scalar loaded from a CDN `<script>` (not the `@scalar/api-reference-react`
   package — its bundled CSS didn't survive Turbopack, see `app/docs/route.ts`). Every new route
   needs a matching `paths` entry in its cohort's spec. The two docs pages share
   `lib/docs-page.ts`; Scalar's own multi-spec selector (`data-configuration` with `sources`) was
   tried first and the CDN build in use (1.67.0) never leaves the loading skeleton with it.
-- `lib/rate-limit.ts` — Upstash Redis sliding window, 30 req/min, keyed by `apiKeyId` (not IP,
-  since students may share a classroom network).
+- `lib/rate-limit.ts` — Upstash Redis sliding window, keyed by `apiKeyId` (not IP, since
+  students may share a classroom network). The limit is **per route**: `checkRateLimit(id,
+  cfg)` takes a `RateLimitConfig { requests, windowSeconds, bucket }`, defaulting to
+  `DEFAULT_RATE_LIMIT` (30/60s). **Every distinct config needs its own `bucket`** — the Redis
+  prefix is `aiquaa-sandbox:${bucket}`, and two limits sharing a bucket share the keys, so the
+  permissive route drains the strict route's window. The 429 message is built by
+  `rateLimitMessage(cfg)`; never hardcode "30 requests per minute" again. Successful responses
+  now carry `X-RateLimit-*` too (`setRateLimitHeaders` in `lib/errors.ts`); `X-RateLimit-Reset`
+  is Unix **milliseconds**, which is what Upstash returns.
 - `lib/audit-log.ts` — writes every request (success or failure) to `public.sql_audit_log`;
   never throws (a logging failure must not turn a 200 into a 500), and is always `await`ed
   rather than fire-and-forget since a Vercel function can freeze right after the response.
+  Beyond the original columns it records `duration_ms`, `status_code`, `method`, `route` (the
+  normalized template — `normalizeRoute()` turns `/api/v1/cuentas/42` into
+  `/api/v1/cuentas/{id}`, otherwise every id is its own series in Grafana) and `subject`.
+  401/403/429 are now logged too, sampled. `logAudit(entry, { sampleRate })` applies the
+  sample to **every** entry, not just successes — during a load run the 429s are as numerous
+  as the 200s. Only `/api/perf/**` passes a sample rate.
 
 ### Adding a new REST route under `app/api/v1/`
 
@@ -179,3 +238,63 @@ instead the shared pipelines (`lib/auth.ts`, `lib/api-route.ts`, `lib/sql-valida
 injectable `pool` parameter or have their real dependencies mocked with `vi.mock` (see
 `lib/api-route.test.ts`, which mocks `./auth`, `./rate-limit`, `./audit-log`), so tests don't
 hit the module-level `Pool` singletons in `lib/db.ts` or need real credentials.
+
+## The performance suite (`/api/perf/**`) and monitoring
+
+Built for a live talk on performance and monitoring. `perf/README.md` has the setup,
+`perf/README-charla.md` maps each talking point to a runnable demo.
+
+- Routes are under `app/api/perf/**`, declare **no `curso`** (any valid key from either
+  cohort works — the `/api/v1/roster` precedent), use `getQaApiPool()`, and have their own
+  spec (`lib/openapi-perf.ts` → `/api/perf/docs`, rendered at `/docs/perf`, third entry in
+  `TABS` in `lib/docs-page.ts`).
+- Per-route limits and the sample rates live in `lib/perf-config.ts`, along with
+  `SYSTEM_LIMITS` — ceilings measured against the live instance, served by
+  `GET /api/perf/limits`. **If the instance is resized, those numbers become lies**; re-run
+  the `pg_settings` query in the file's comment.
+- `/api/perf/echo` and `/api/perf/echo-limited` must stay byte-identical in behavior (they
+  share `perfEchoRoute()`); the whole point is that the *only* difference is the limit.
+- `?mode=literal` on `/api/perf/db` concatenates the filter value into the SQL **on purpose**
+  — it's the hard-parse demo, and each distinct literal creates a new `pg_stat_statements`
+  entry. The value is a server-generated integer, never client input, so there's no injection
+  surface. It does cause eviction in `pg_stat_statements` for the whole (shared) instance;
+  `SELECT extensions.pg_stat_statements_reset()` afterwards.
+- Load-test tables (`perf_carga`, `perf_idempotencia`) are dedicated so a run never blocks
+  course data. `perf_carga.codigo` is deliberately **unindexed** — it's the slow side of
+  `?indexed=false`.
+
+### Facts about this instance that shape the whole design
+
+Measured 2026-09-22 against `hocryhxndegslzfiwlnx` (Postgres 17.6):
+
+- **`max_connections = 60`**, and it is a *global* resource shared with unrelated production
+  data outside `qa_training`. This — not CPU — is the system's real ceiling, and an
+  aggressive load run can starve the rest of the project.
+- `shared_buffers` 224 MB, `work_mem` 2.1 MB, `plan_cache_mode = auto`.
+- `pg_stat_statements` is installed (schema `extensions`), but **`track_planning` is `off`**,
+  so `total_plan_time` is always 0. The hard-parse demo therefore graphs the *count* of
+  entries, not planning time.
+- The transaction pooler (port 6543, mandatory because the direct host is IPv6-only) **cannot
+  hold named prepared statements**, so every `pool.query` is re-parsed and re-planned
+  server-side even though all the SQL is correctly parameterized. That's this repo's own
+  instance of the problem the talk describes.
+
+### Monitoring
+
+`scripts/setup-monitoring.sql` creates a read-only `qa_monitor` role (`CONNECTION LIMIT 3` —
+those 60 connections are shared) and `public.v_api_metrics`, a view that joins
+`sql_audit_log` with `api_keys` to expose the label and curso **without granting access to
+`api_keys`**, which stores keys in plaintext. The view works for `qa_monitor` only because it
+is not `security_invoker` and its owner bypasses RLS on `sql_audit_log`; turning on FORCE ROW
+LEVEL SECURITY there would silently empty the dashboards.
+
+Grafana Cloud consumes two sources: a Postgres datasource for `pg_stat_statements` and
+`pg_stat_activity` (point-in-time, no history of their own), and Prometheus via Grafana Alloy
+for everything that needs a time series. Dashboards are versioned in `perf/grafana/`.
+
+**Vercel serverless has no CPU/memory to scrape** — no pod, no cgroup, and function metrics
+require a Pro plan. So there are two complementary views: `perf/docker-compose.yml` runs the
+app locally with explicit `cpus`/`memory` limits and cAdvisor (real numbers, and the k8s
+sizing story), while `/api/perf/metrics` self-reports `process.memoryUsage()`/`cpuUsage()`
+per lambda `instance_id` from the real deploy. Those per-instance numbers must never be
+summed across instances.

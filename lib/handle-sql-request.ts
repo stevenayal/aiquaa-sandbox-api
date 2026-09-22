@@ -2,10 +2,15 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import type { Pool } from "pg";
 import { authenticate } from "./auth";
-import { checkRateLimit } from "./rate-limit";
+import {
+  checkRateLimit,
+  rateLimitMessage,
+  DEFAULT_RATE_LIMIT,
+  type RateLimitConfig,
+} from "./rate-limit";
 import { validateSql, type StatementType } from "./sql-validator";
-import { logAudit, extractClientIp } from "./audit-log";
-import { errorResponse, rateLimitResponse } from "./errors";
+import { logAudit, extractClientIp, normalizeRoute } from "./audit-log";
+import { errorResponse, rateLimitResponse, setRateLimitHeaders } from "./errors";
 
 const bodySchema = z.object({
   sql: z.string().min(1).max(5000),
@@ -26,6 +31,9 @@ export interface HandleSqlRequestOptions {
   curso?: number;
   schema?: string;
   allowedTables?: readonly string[];
+  // Limite propio de la ruta; omitido = DEFAULT_RATE_LIMIT (30/min). Ver
+  // lib/rate-limit.ts: cada config necesita su propio `bucket`.
+  rateLimit?: RateLimitConfig;
 }
 
 // Shared pipeline for /api/v1/sql/select and /api/v1/sql/update — the two
@@ -35,6 +43,11 @@ export async function handleSqlRequest(
   request: Request,
   options: HandleSqlRequestOptions,
 ): Promise<NextResponse> {
+  const url = new URL(request.url);
+  const method = request.method;
+  const route = normalizeRoute(url.pathname);
+  const rateLimitConfig = options.rateLimit ?? DEFAULT_RATE_LIMIT;
+
   const auth = await authenticate(request);
   if (!auth.ok) {
     return errorResponse(auth.status === 401 ? "UNAUTHORIZED" : "INTERNAL_ERROR", auth.message);
@@ -47,9 +60,9 @@ export async function handleSqlRequest(
     );
   }
 
-  const rateLimit = await checkRateLimit(auth.apiKeyId);
+  const rateLimit = await checkRateLimit(auth.apiKeyId, rateLimitConfig);
   if (!rateLimit.success) {
-    return rateLimitResponse("Rate limit exceeded. Max 30 requests per minute.", {
+    return rateLimitResponse(rateLimitMessage(rateLimitConfig), {
       retryAfterSeconds: Math.max(1, Math.ceil((rateLimit.reset - Date.now()) / 1000)),
       limit: rateLimit.limit,
       remaining: rateLimit.remaining,
@@ -82,14 +95,31 @@ export async function handleSqlRequest(
       success: false,
       error: validation.message,
       ip,
+      statusCode: 400,
+      method,
+      route,
     });
     return errorResponse("VALIDATION_ERROR", validation.message);
   }
 
+  const startedAt = performance.now();
+
   try {
     const result = await options.getPool().query(body.sql, params);
-    await logAudit({ apiKeyId: auth.apiKeyId, sql: body.sql, params, success: true, ip });
-    return NextResponse.json({ data: result.rows, rowCount: result.rowCount });
+    await logAudit({
+      apiKeyId: auth.apiKeyId,
+      sql: body.sql,
+      params,
+      success: true,
+      ip,
+      durationMs: Math.round(performance.now() - startedAt),
+      statusCode: 200,
+      method,
+      route,
+    });
+    const res = NextResponse.json({ data: result.rows, rowCount: result.rowCount });
+    setRateLimitHeaders(res, rateLimit);
+    return res;
   } catch (e) {
     const message = (e as Error).message;
     await logAudit({
@@ -99,6 +129,10 @@ export async function handleSqlRequest(
       success: false,
       error: message,
       ip,
+      durationMs: Math.round(performance.now() - startedAt),
+      statusCode: 400,
+      method,
+      route,
     });
     return errorResponse("EXECUTION_ERROR", message);
   }

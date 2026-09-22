@@ -1,0 +1,11 @@
+grupo,username,password
+1,g01_auth,Grupo01!
+2,g02_transferencias,Grupo02!
+3,g03_pagos,Grupo03!
+4,g04_onboarding,Grupo04!
+5,g05_tarjetas,Grupo05!
+6,g06_notificaciones,Grupo06!
+7,g07_ecommerce,Grupo07!
+8,g08_reservas,Grupo08!
+9,g09_reportes,Grupo09!
+10,g10_roles,Grupo10!

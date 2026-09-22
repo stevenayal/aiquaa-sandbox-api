@@ -1,0 +1,99 @@
+# Stack local de la demo de rendimiento.
+#
+#   docker compose -f perf/docker-compose.yml --env-file .env.local up --build
+#
+# Por que local y no contra Vercel: en Vercel serverless no hay pod, no hay
+# cgroup y no hay nada que scrapear — las metricas de funcion son de plan Pro.
+# Aca la API corre en un contenedor con limites explicitos, y cAdvisor da CPU
+# y memoria reales. Eso es, ademas, el analogo exacto de dimensionar un pod de
+# k8s: bajar `cpus` a 0.25 y ver derrumbarse el p95 ES la demo de sizing.
+#
+# El deploy en Vercel sigue existiendo en paralelo: su auto-reporte
+# (/api/perf/metrics?format=prometheus) alimenta el panel de contraste.
+
+name: aiquaa-perf
+
+services:
+  api:
+    build:
+      context: ..
+      dockerfile: perf/Dockerfile
+    # El nombre del contenedor es el label `name` que usan las queries de
+    # cAdvisor en perf/grafana/dashboard-api-load.json. Si lo cambias, cambia
+    # tambien las queries.
+    container_name: aiquaa-api
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      DATABASE_URL_READER: ${DATABASE_URL_READER}
+      DATABASE_URL_WRITER: ${DATABASE_URL_WRITER}
+      DATABASE_URL_META: ${DATABASE_URL_META}
+      DATABASE_URL_API: ${DATABASE_URL_API}
+      UPSTASH_REDIS_REST_URL: ${UPSTASH_REDIS_REST_URL}
+      UPSTASH_REDIS_REST_TOKEN: ${UPSTASH_REDIS_REST_TOKEN}
+      JWT_SECRET: ${JWT_SECRET}
+    deploy:
+      resources:
+        limits:
+          # El numero de la demo. Arrancar con 0.5, mostrar el p95 estable, y
+          # despues bajarlo a "0.25" y volver a levantar: el throttling aparece
+          # en el panel de cAdvisor antes de que se caiga ninguna request.
+          cpus: "0.5"
+          memory: 512M
+
+  # CPU, memoria, red y throttling de los contenedores. Es la fuente del panel
+  # de sizing.
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    container_name: aiquaa-cadvisor
+    privileged: true
+    ports:
+      - "8080:8080"
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+    command:
+      - "--housekeeping_interval=5s"
+      - "--docker_only=true"
+
+  # Metricas de Postgres como series temporales. pg_stat_* es puntual: sin un
+  # exporter, Grafana solo ve el valor del momento del refresh y no hay
+  # historia que mirar despues de la corrida.
+  #
+  # Usa el rol de solo lectura qa_monitor (scripts/setup-monitoring.sql), por
+  # el pooler en el puerto 6543 y con CONNECTION LIMIT 3: max_connections es 60
+  # y es un recurso global compartido.
+  postgres-exporter:
+    image: quay.io/prometheuscommunity/postgres-exporter:v0.15.0
+    container_name: aiquaa-pg-exporter
+    environment:
+      DATA_SOURCE_NAME: ${DATABASE_URL_MONITOR}
+      PG_EXPORTER_EXCLUDE_DATABASES: template0,template1
+    ports:
+      - "9187:9187"
+
+  # Agente que scrapea todo lo de arriba y lo empuja a Grafana Cloud.
+  alloy:
+    image: grafana/alloy:v1.5.1
+    container_name: aiquaa-alloy
+    volumes:
+      - ./alloy/config.alloy:/etc/alloy/config.alloy:ro
+    environment:
+      GRAFANA_CLOUD_PROM_URL: ${GRAFANA_CLOUD_PROM_URL}
+      GRAFANA_CLOUD_PROM_USER: ${GRAFANA_CLOUD_PROM_USER}
+      GRAFANA_CLOUD_PROM_TOKEN: ${GRAFANA_CLOUD_PROM_TOKEN}
+      # Deploy en Vercel a scrapear para el panel de contraste serverless.
+      VERCEL_BASE_URL: ${VERCEL_BASE_URL:-https://aiquaa-sandbox-api.vercel.app}
+      PERF_METRICS_API_KEY: ${PERF_METRICS_API_KEY}
+    command:
+      - run
+      - /etc/alloy/config.alloy
+      - --server.http.listen-addr=0.0.0.0:12345
+    ports:
+      - "12345:12345"
+    depends_on:
+      - cadvisor
+      - postgres-exporter

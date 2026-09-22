@@ -201,6 +201,39 @@ CREATE TABLE IF NOT EXISTS qa_training_v2.depositos (
 );
 
 -- -----------------------------------------------------------------------------
+-- 1b. Credenciales de grupo del curso 2 (login usuario + password -> JWT).
+--
+--     Igual que en qa_training: NO va en QA_TRAINING_V2_TABLES de
+--     lib/sql-validator.ts, y eso es lo que impide que un alumno lea los
+--     hashes desde /api/v2/sql/select.
+--
+--     Va antes de la seccion de GRANTs para que los
+--     `GRANT ... ON ALL TABLES IN SCHEMA qa_training_v2` y el bucle de RLS la
+--     cubran automaticamente.
+--
+--     El curso 2 no tiene tabla `sesiones`: aca el login no deja rastro de
+--     dominio, solo la fila de public.sql_audit_log. No se crea una tabla
+--     `sesiones` en v2 solo para esto.
+-- -----------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS qa_training_v2.credenciales (
+  id            bigserial PRIMARY KEY,
+  usuario_id    bigint NOT NULL REFERENCES qa_training_v2.usuarios (id),
+  username      text NOT NULL UNIQUE,
+  -- extensions.crypt(password, extensions.gen_salt('bf', 10)): bcrypt via
+  -- pgcrypto. La verificacion corre en la base, ver setup-db.sql.
+  password_hash text NOT NULL,
+  -- El curso 2 tiene 5 grupos (cuentas, tarjetas, prestamos,
+  -- transferencias/pagos, ahorros/depositos), no 10.
+  grupo         smallint NOT NULL CHECK (grupo BETWEEN 1 AND 5),
+  activo        boolean NOT NULL DEFAULT true,
+  created_at    timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS credenciales_usuario_id_idx
+  ON qa_training_v2.credenciales (usuario_id);
+
+-- -----------------------------------------------------------------------------
 -- 2. Migracion aditiva sobre `public`: cohorte de cada API key / alumno.
 --    Segura de re-correr; toda fila existente queda en curso 1.
 -- -----------------------------------------------------------------------------
@@ -234,6 +267,11 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA qa_training_v2 GRANT SELECT, INSERT, UPDATE O
 -- esto todo INSERT de qa_api falla con "permission denied for sequence ...",
 -- aunque el GRANT de tabla este bien.
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA qa_training_v2 TO qa_api;
+
+-- Defensa en profundidad sobre los hashes, igual que en setup-db.sql: los
+-- GRANT ... ON ALL TABLES de arriba alcanzan a credenciales, y qa_reader
+-- respalda /api/v2/sql/select.
+REVOKE ALL ON qa_training_v2.credenciales FROM qa_reader, qa_writer;
 ALTER DEFAULT PRIVILEGES IN SCHEMA qa_training_v2 GRANT USAGE, SELECT ON SEQUENCES TO qa_api;
 
 -- -----------------------------------------------------------------------------

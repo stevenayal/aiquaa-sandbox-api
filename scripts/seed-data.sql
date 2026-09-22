@@ -8,6 +8,7 @@
 -- =============================================================================
 
 TRUNCATE TABLE
+  qa_training.credenciales,
   qa_training.usuario_roles,
   qa_training.movimientos,
   qa_training.items_orden,
@@ -437,3 +438,53 @@ INSERT INTO qa_training.tickets (usuario_id, orden_id, asunto, estado, prioridad
   (11, 27, 'Error en el checkout', 'en_progreso', 'media'),
   (14, 28, 'Confirmar recepcion de pago', 'abierto', 'baja'),
   (17, 29, 'Consulta sobre renovacion', 'cerrado', 'media');
+
+
+-- =============================================================================
+-- Credenciales de grupo: un usuario + un login por cada uno de los 10 grupos,
+-- para POST /api/v1/g{n}/auth/token.
+--
+-- Los passwords van en claro EN ESTE ARCHIVO a proposito y estan publicados en
+-- el README: es un sandbox con datos falsos y los alumnos los necesitan. Lo
+-- que no va en claro es lo que queda en la base — password_hash guarda el
+-- bcrypt que produce extensions.crypt(..., extensions.gen_salt('bf', 10)).
+-- =============================================================================
+
+WITH usuarios_grupo AS (
+  INSERT INTO qa_training.usuarios
+    (nombre, email, activo, documento_tipo, documento_numero, kyc_estado)
+  VALUES
+  ('Grupo 1 - Autenticación y Acceso', 'g01@aiquaa.test', true, 'CI', '9000001', 'verificado'),
+  ('Grupo 2 - Transferencias entre Cuentas', 'g02@aiquaa.test', true, 'CI', '9000002', 'verificado'),
+  ('Grupo 3 - Pagos de Servicios', 'g03@aiquaa.test', true, 'CI', '9000003', 'verificado'),
+  ('Grupo 4 - Registro de Usuario / Onboarding', 'g04@aiquaa.test', true, 'CI', '9000004', 'verificado'),
+  ('Grupo 5 - Tarjetas de Crédito/Débito', 'g05@aiquaa.test', true, 'CI', '9000005', 'verificado'),
+  ('Grupo 6 - Notificaciones y Alertas', 'g06@aiquaa.test', true, 'CI', '9000006', 'verificado'),
+  ('Grupo 7 - Carrito de Compras / E-commerce', 'g07@aiquaa.test', true, 'CI', '9000007', 'verificado'),
+  ('Grupo 8 - Reservas / Turnos', 'g08@aiquaa.test', true, 'CI', '9000008', 'verificado'),
+  ('Grupo 9 - Reportes y Dashboard', 'g09@aiquaa.test', true, 'CI', '9000009', 'verificado'),
+  ('Grupo 10 - Administración de Roles y Permisos', 'g10@aiquaa.test', true, 'CI', '9000010', 'verificado')
+  RETURNING id, email
+)
+INSERT INTO qa_training.credenciales (usuario_id, username, password_hash, grupo)
+SELECT
+  u.id,
+  v.username::text,
+  -- Casts explicitos: los literales de un VALUES entran como `unknown` y sin
+  -- esto Postgres puede no resolver la sobrecarga crypt(text, text).
+  extensions.crypt(v.password::text, extensions.gen_salt('bf', 10)),
+  v.grupo::smallint
+FROM usuarios_grupo u
+JOIN (
+  VALUES
+    ('g01@aiquaa.test', 'g01_auth', 'Grupo01!', 1),
+    ('g02@aiquaa.test', 'g02_transferencias', 'Grupo02!', 2),
+    ('g03@aiquaa.test', 'g03_pagos', 'Grupo03!', 3),
+    ('g04@aiquaa.test', 'g04_onboarding', 'Grupo04!', 4),
+    ('g05@aiquaa.test', 'g05_tarjetas', 'Grupo05!', 5),
+    ('g06@aiquaa.test', 'g06_notificaciones', 'Grupo06!', 6),
+    ('g07@aiquaa.test', 'g07_ecommerce', 'Grupo07!', 7),
+    ('g08@aiquaa.test', 'g08_reservas', 'Grupo08!', 8),
+    ('g09@aiquaa.test', 'g09_reportes', 'Grupo09!', 9),
+    ('g10@aiquaa.test', 'g10_roles', 'Grupo10!', 10)
+) AS v(email, username, password, grupo) ON v.email = u.email;

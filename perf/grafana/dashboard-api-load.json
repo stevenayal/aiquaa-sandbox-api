@@ -1,0 +1,388 @@
+{
+  "uid": "aiquaa-api-load",
+  "title": "aiquaa - API bajo carga (CPU / memoria / latencia)",
+  "description": "Consumo de recursos y latencia de la API mientras se la estresa. Tres fuentes, y conviene tener claro cual es cual: cAdvisor sobre el contenedor local (docker-compose) da CPU y memoria REALES con limites; /api/perf/metrics da el auto-reporte por instancia del deploy en Vercel, donde no hay cgroup que scrapear; y public.v_api_metrics da latencia y status de toda la flota.",
+  "tags": [
+    "aiquaa",
+    "api",
+    "rendimiento"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s",
+  "time": {
+    "from": "now-30m",
+    "to": "now"
+  },
+  "editable": true,
+  "templating": {
+    "list": [
+      {
+        "name": "DS_PROMETHEUS",
+        "type": "datasource",
+        "query": "prometheus",
+        "label": "Prometheus",
+        "current": {}
+      },
+      {
+        "name": "DS_POSTGRES",
+        "type": "datasource",
+        "query": "grafana-postgresql-datasource",
+        "label": "Postgres (qa_monitor)",
+        "current": {}
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "CPU del contenedor de la API (limite 0.5 vCPU)",
+      "description": "EL panel de sizing. Viene de cAdvisor sobre el contenedor local de docker-compose. container_cpu_cfs_throttled_periods_total subiendo significa que el limite de CPU esta frenando al proceso: exactamente lo que pasa con un pod de k8s mal dimensionado. Bajar el limite a 0.25 en vivo y ver derrumbarse el p95 es la demo.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 8
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "rate(container_cpu_usage_seconds_total{name=\"aiquaa-api\"}[1m])",
+          "legendFormat": "cpu usada (cores)",
+          "editorMode": "code",
+          "range": true
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "rate(container_cpu_cfs_throttled_periods_total{name=\"aiquaa-api\"}[1m])",
+          "legendFormat": "periodos con throttling",
+          "editorMode": "code",
+          "range": true
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Memoria del contenedor de la API (limite 512 MB)",
+      "description": "container_memory_working_set_bytes contra el limite. Si toca el techo, el OOM killer mata el proceso y la prueba mide reinicios, no rendimiento.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 8
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "container_memory_working_set_bytes{name=\"aiquaa-api\"}",
+          "legendFormat": "working set",
+          "editorMode": "code",
+          "range": true
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "container_spec_memory_limit_bytes{name=\"aiquaa-api\"}",
+          "legendFormat": "limite",
+          "editorMode": "code",
+          "range": true
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Latencia del handler (p50 / p95 / p99)",
+      "description": "Calculado sobre public.v_api_metrics (la columna duration_ms que se agrego para esto). Es de TODA la flota, no de una instancia. Ojo: /api/perf/** se audita muestreado (echo 5%, db 10%), asi que los percentiles de esas rutas salen de una muestra, no del total.",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "${DS_POSTGRES}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 8
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "${DS_POSTGRES}"
+          },
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT\n  $__timeGroupAlias(created_at, '30s'),\n  percentile_cont(0.5)  WITHIN GROUP (ORDER BY duration_ms) AS p50,\n  percentile_cont(0.95) WITHIN GROUP (ORDER BY duration_ms) AS p95,\n  percentile_cont(0.99) WITHIN GROUP (ORDER BY duration_ms) AS p99\nFROM public.v_api_metrics\nWHERE $__timeFilter(created_at) AND duration_ms IS NOT NULL\nGROUP BY 1\nORDER BY 1",
+          "editorMode": "code"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Respuestas por clase de status",
+      "description": "El 429 va separado a proposito: un test de carga que suma los 429 como 'requests servidos' miente sobre el throughput real. Correr el mismo plan contra /api/perf/echo (3000/min) y /api/perf/echo-limited (10/min) hace visible la diferencia.",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "${DS_POSTGRES}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 8
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "${DS_POSTGRES}"
+          },
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT\n  $__timeGroupAlias(created_at, '30s'),\n  CASE\n    WHEN status_code = 429 THEN '429 rate limited'\n    WHEN status_code >= 500 THEN '5xx'\n    WHEN status_code >= 400 THEN '4xx'\n    ELSE '2xx'\n  END      AS estado,\n  count(*) AS requests\nFROM public.v_api_metrics\nWHERE $__timeFilter(created_at)\nGROUP BY 1, 2\nORDER BY 1",
+          "editorMode": "code"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Memoria auto-reportada por instancia (Vercel)",
+      "description": "De /api/perf/metrics?format=prometheus. Cada serie es una lambda distinta: en serverless no hay 'un servidor' que crece, hay N instancias efimeras que nacen y mueren. Es el contraste directo con el panel de CPU del contenedor de arriba.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 16
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "decmbytes",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 8
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "aiquaa_process_memory_mb{kind=\"rss\"}",
+          "legendFormat": "rss instancia {{instance_id}}",
+          "editorMode": "code",
+          "range": true
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Presupuesto de rate limit restante",
+      "description": "X-RateLimit-Remaining por bucket. Cuando toca cero empiezan los 429. Sirve para mostrar que el rate limit es parte del SLA, no un detalle de implementacion.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 16
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 8
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "aiquaa_rate_limited_total",
+          "legendFormat": "429 acumulados {{instance}}",
+          "editorMode": "code",
+          "range": true
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "table",
+      "title": "Por ruta: volumen, errores y p95",
+      "description": "Ordenado por volumen. Es el desglose que responde 'que endpoint se cae primero' sin tener que adivinar. route esta normalizado (/api/v1/cuentas/{id}), si no cada id seria una serie distinta.",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "${DS_POSTGRES}"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 24
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "footer": {
+          "show": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "${DS_POSTGRES}"
+          },
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT\n  route,\n  method,\n  count(*)                                                  AS requests,\n  count(*) FILTER (WHERE status_code >= 400)                AS errores,\n  round(percentile_cont(0.95) WITHIN GROUP (ORDER BY duration_ms)::numeric, 1) AS p95_ms,\n  round(max(duration_ms)::numeric, 1)                       AS max_ms\nFROM public.v_api_metrics\nWHERE $__timeFilter(created_at) AND route IS NOT NULL\nGROUP BY route, method\nORDER BY requests DESC\nLIMIT 25",
+          "editorMode": "code"
+        }
+      ]
+    }
+  ]
+}

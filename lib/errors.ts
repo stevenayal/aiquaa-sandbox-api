@@ -50,3 +50,17 @@ export function rateLimitResponse(
   res.headers.set("X-RateLimit-Reset", String(opts.reset));
   return res;
 }
+
+// Los mismos X-RateLimit-* que rateLimitResponse pone en el 429, pero para
+// respuestas exitosas: un plan de JMeter necesita ver el presupuesto restante
+// en cada respuesta, no solo cuando ya choco contra la pared.
+// Nota: X-RateLimit-Reset va en milisegundos Unix (lo que devuelve Upstash),
+// no en segundos como propone el draft IETF. Documentado asi en el README.
+export function setRateLimitHeaders(
+  res: NextResponse,
+  opts: { limit: number; remaining: number; reset: number },
+): void {
+  res.headers.set("X-RateLimit-Limit", String(opts.limit));
+  res.headers.set("X-RateLimit-Remaining", String(opts.remaining));
+  res.headers.set("X-RateLimit-Reset", String(opts.reset));
+}

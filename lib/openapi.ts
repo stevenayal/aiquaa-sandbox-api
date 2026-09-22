@@ -60,6 +60,7 @@ export const openApiSpec = {
     { name: "Grupo 8 - Reservas / Turnos", description: "Reservas de servicios." },
     { name: "Grupo 9 - Reportes y Dashboard", description: "Agregados de solo lectura sobre movimientos." },
     { name: "Grupo 10 - Roles y Permisos", description: "Roles disponibles y asignación a usuarios." },
+    { name: "Tokens de grupo", description: "Login con usuario + password por grupo. Devuelve un JWT que sustituye a la x-api-key en el header Authorization." },
     { name: "Roster", description: "Mapea el email real de un alumno a su grupo de curso asignado — metadata del curso, no uno de los 10 grupos pedagógicos." },
   ],
   components: {
@@ -69,8 +70,35 @@ export const openApiSpec = {
         in: "header",
         name: "x-api-key",
       },
+      // Segunda via, alternativa a la API key: el token de grupo que emite
+      // POST /api/v1/g{n}/auth/token. Ver el tag "Tokens de grupo".
+      BearerAuth: {
+        type: "http",
+        scheme: "bearer",
+        bearerFormat: "JWT",
+      },
     },
     schemas: {
+    GroupToken: {
+      type: "object",
+      properties: {
+        token: { type: "string", description: "JWT HS256. Pegalo en jwt.io para ver los claims." },
+        tokenType: { type: "string", enum: ["Bearer"] },
+        expiresIn: { type: "integer", description: "Segundos de vigencia (3600)." },
+        grupo: { type: "integer" },
+        grupoNombre: { type: "string" },
+        curso: { type: "integer" },
+        usuario: {
+          type: "object",
+          properties: {
+            id: { type: "integer" },
+            nombre: { type: "string" },
+            email: { type: "string" },
+            username: { type: "string" },
+          },
+        },
+      },
+    },
       SqlRequest: {
         type: "object",
         required: ["sql"],
@@ -335,8 +363,461 @@ export const openApiSpec = {
       },
     },
   },
-  security: [{ ApiKeyAuth: [] }],
+  // Cualquiera de las dos alcanza (OR, no AND): x-api-key o Bearer.
+  security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }],
   paths: {
+    // --- Tokens de grupo (los 10 grupos del curso 1) ---
+    "/api/v1/g1/auth/token": {
+      post: {
+        tags: ["Tokens de grupo"],
+        summary: "Obtener token de grupo (Grupo 1)",
+        description:
+          "Devuelve un JWT HS256 (1 h) para el Grupo 1. El token se manda en las demas " +
+          "rutas como `Authorization: Bearer <token>`, en lugar de `x-api-key`. " +
+          "Credenciales sembradas: `g01_auth` / `Grupo01!`. " +
+          "Las credenciales de otro grupo contra esta ruta devuelven 403. " +
+          "Credenciales invalidas devuelven 400 (no 401): el 401 esta reservado al fallo de " +
+          "autenticacion de la API key.",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["username", "password"],
+                properties: {
+                  username: { type: "string", example: "g01_auth" },
+                  password: { type: "string", format: "password", example: "Grupo01!" },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          "200": {
+            description: "Token emitido",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: { data: { $ref: "#/components/schemas/GroupToken" } },
+                },
+              },
+            },
+          },
+          "400": errRef("Usuario o password invalidos"),
+          "403": errRef("Las credenciales pertenecen a otro grupo, o la API key es de otro curso"),
+          "401": errRef("API key invalida, inactiva o ausente"),
+          "429": errRef("Limite de requests excedido"),
+        },
+      },
+    },
+    "/api/v1/g2/auth/token": {
+      post: {
+        tags: ["Tokens de grupo"],
+        summary: "Obtener token de grupo (Grupo 2)",
+        description:
+          "Devuelve un JWT HS256 (1 h) para el Grupo 2. El token se manda en las demas " +
+          "rutas como `Authorization: Bearer <token>`, en lugar de `x-api-key`. " +
+          "Credenciales sembradas: `g02_transferencias` / `Grupo02!`. " +
+          "Las credenciales de otro grupo contra esta ruta devuelven 403. " +
+          "Credenciales invalidas devuelven 400 (no 401): el 401 esta reservado al fallo de " +
+          "autenticacion de la API key.",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["username", "password"],
+                properties: {
+                  username: { type: "string", example: "g02_transferencias" },
+                  password: { type: "string", format: "password", example: "Grupo02!" },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          "200": {
+            description: "Token emitido",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: { data: { $ref: "#/components/schemas/GroupToken" } },
+                },
+              },
+            },
+          },
+          "400": errRef("Usuario o password invalidos"),
+          "403": errRef("Las credenciales pertenecen a otro grupo, o la API key es de otro curso"),
+          "401": errRef("API key invalida, inactiva o ausente"),
+          "429": errRef("Limite de requests excedido"),
+        },
+      },
+    },
+    "/api/v1/g3/auth/token": {
+      post: {
+        tags: ["Tokens de grupo"],
+        summary: "Obtener token de grupo (Grupo 3)",
+        description:
+          "Devuelve un JWT HS256 (1 h) para el Grupo 3. El token se manda en las demas " +
+          "rutas como `Authorization: Bearer <token>`, en lugar de `x-api-key`. " +
+          "Credenciales sembradas: `g03_pagos` / `Grupo03!`. " +
+          "Las credenciales de otro grupo contra esta ruta devuelven 403. " +
+          "Credenciales invalidas devuelven 400 (no 401): el 401 esta reservado al fallo de " +
+          "autenticacion de la API key.",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["username", "password"],
+                properties: {
+                  username: { type: "string", example: "g03_pagos" },
+                  password: { type: "string", format: "password", example: "Grupo03!" },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          "200": {
+            description: "Token emitido",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: { data: { $ref: "#/components/schemas/GroupToken" } },
+                },
+              },
+            },
+          },
+          "400": errRef("Usuario o password invalidos"),
+          "403": errRef("Las credenciales pertenecen a otro grupo, o la API key es de otro curso"),
+          "401": errRef("API key invalida, inactiva o ausente"),
+          "429": errRef("Limite de requests excedido"),
+        },
+      },
+    },
+    "/api/v1/g4/auth/token": {
+      post: {
+        tags: ["Tokens de grupo"],
+        summary: "Obtener token de grupo (Grupo 4)",
+        description:
+          "Devuelve un JWT HS256 (1 h) para el Grupo 4. El token se manda en las demas " +
+          "rutas como `Authorization: Bearer <token>`, en lugar de `x-api-key`. " +
+          "Credenciales sembradas: `g04_onboarding` / `Grupo04!`. " +
+          "Las credenciales de otro grupo contra esta ruta devuelven 403. " +
+          "Credenciales invalidas devuelven 400 (no 401): el 401 esta reservado al fallo de " +
+          "autenticacion de la API key.",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["username", "password"],
+                properties: {
+                  username: { type: "string", example: "g04_onboarding" },
+                  password: { type: "string", format: "password", example: "Grupo04!" },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          "200": {
+            description: "Token emitido",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: { data: { $ref: "#/components/schemas/GroupToken" } },
+                },
+              },
+            },
+          },
+          "400": errRef("Usuario o password invalidos"),
+          "403": errRef("Las credenciales pertenecen a otro grupo, o la API key es de otro curso"),
+          "401": errRef("API key invalida, inactiva o ausente"),
+          "429": errRef("Limite de requests excedido"),
+        },
+      },
+    },
+    "/api/v1/g5/auth/token": {
+      post: {
+        tags: ["Tokens de grupo"],
+        summary: "Obtener token de grupo (Grupo 5)",
+        description:
+          "Devuelve un JWT HS256 (1 h) para el Grupo 5. El token se manda en las demas " +
+          "rutas como `Authorization: Bearer <token>`, en lugar de `x-api-key`. " +
+          "Credenciales sembradas: `g05_tarjetas` / `Grupo05!`. " +
+          "Las credenciales de otro grupo contra esta ruta devuelven 403. " +
+          "Credenciales invalidas devuelven 400 (no 401): el 401 esta reservado al fallo de " +
+          "autenticacion de la API key.",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["username", "password"],
+                properties: {
+                  username: { type: "string", example: "g05_tarjetas" },
+                  password: { type: "string", format: "password", example: "Grupo05!" },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          "200": {
+            description: "Token emitido",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: { data: { $ref: "#/components/schemas/GroupToken" } },
+                },
+              },
+            },
+          },
+          "400": errRef("Usuario o password invalidos"),
+          "403": errRef("Las credenciales pertenecen a otro grupo, o la API key es de otro curso"),
+          "401": errRef("API key invalida, inactiva o ausente"),
+          "429": errRef("Limite de requests excedido"),
+        },
+      },
+    },
+    "/api/v1/g6/auth/token": {
+      post: {
+        tags: ["Tokens de grupo"],
+        summary: "Obtener token de grupo (Grupo 6)",
+        description:
+          "Devuelve un JWT HS256 (1 h) para el Grupo 6. El token se manda en las demas " +
+          "rutas como `Authorization: Bearer <token>`, en lugar de `x-api-key`. " +
+          "Credenciales sembradas: `g06_notificaciones` / `Grupo06!`. " +
+          "Las credenciales de otro grupo contra esta ruta devuelven 403. " +
+          "Credenciales invalidas devuelven 400 (no 401): el 401 esta reservado al fallo de " +
+          "autenticacion de la API key.",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["username", "password"],
+                properties: {
+                  username: { type: "string", example: "g06_notificaciones" },
+                  password: { type: "string", format: "password", example: "Grupo06!" },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          "200": {
+            description: "Token emitido",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: { data: { $ref: "#/components/schemas/GroupToken" } },
+                },
+              },
+            },
+          },
+          "400": errRef("Usuario o password invalidos"),
+          "403": errRef("Las credenciales pertenecen a otro grupo, o la API key es de otro curso"),
+          "401": errRef("API key invalida, inactiva o ausente"),
+          "429": errRef("Limite de requests excedido"),
+        },
+      },
+    },
+    "/api/v1/g7/auth/token": {
+      post: {
+        tags: ["Tokens de grupo"],
+        summary: "Obtener token de grupo (Grupo 7)",
+        description:
+          "Devuelve un JWT HS256 (1 h) para el Grupo 7. El token se manda en las demas " +
+          "rutas como `Authorization: Bearer <token>`, en lugar de `x-api-key`. " +
+          "Credenciales sembradas: `g07_ecommerce` / `Grupo07!`. " +
+          "Las credenciales de otro grupo contra esta ruta devuelven 403. " +
+          "Credenciales invalidas devuelven 400 (no 401): el 401 esta reservado al fallo de " +
+          "autenticacion de la API key.",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["username", "password"],
+                properties: {
+                  username: { type: "string", example: "g07_ecommerce" },
+                  password: { type: "string", format: "password", example: "Grupo07!" },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          "200": {
+            description: "Token emitido",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: { data: { $ref: "#/components/schemas/GroupToken" } },
+                },
+              },
+            },
+          },
+          "400": errRef("Usuario o password invalidos"),
+          "403": errRef("Las credenciales pertenecen a otro grupo, o la API key es de otro curso"),
+          "401": errRef("API key invalida, inactiva o ausente"),
+          "429": errRef("Limite de requests excedido"),
+        },
+      },
+    },
+    "/api/v1/g8/auth/token": {
+      post: {
+        tags: ["Tokens de grupo"],
+        summary: "Obtener token de grupo (Grupo 8)",
+        description:
+          "Devuelve un JWT HS256 (1 h) para el Grupo 8. El token se manda en las demas " +
+          "rutas como `Authorization: Bearer <token>`, en lugar de `x-api-key`. " +
+          "Credenciales sembradas: `g08_reservas` / `Grupo08!`. " +
+          "Las credenciales de otro grupo contra esta ruta devuelven 403. " +
+          "Credenciales invalidas devuelven 400 (no 401): el 401 esta reservado al fallo de " +
+          "autenticacion de la API key.",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["username", "password"],
+                properties: {
+                  username: { type: "string", example: "g08_reservas" },
+                  password: { type: "string", format: "password", example: "Grupo08!" },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          "200": {
+            description: "Token emitido",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: { data: { $ref: "#/components/schemas/GroupToken" } },
+                },
+              },
+            },
+          },
+          "400": errRef("Usuario o password invalidos"),
+          "403": errRef("Las credenciales pertenecen a otro grupo, o la API key es de otro curso"),
+          "401": errRef("API key invalida, inactiva o ausente"),
+          "429": errRef("Limite de requests excedido"),
+        },
+      },
+    },
+    "/api/v1/g9/auth/token": {
+      post: {
+        tags: ["Tokens de grupo"],
+        summary: "Obtener token de grupo (Grupo 9)",
+        description:
+          "Devuelve un JWT HS256 (1 h) para el Grupo 9. El token se manda en las demas " +
+          "rutas como `Authorization: Bearer <token>`, en lugar de `x-api-key`. " +
+          "Credenciales sembradas: `g09_reportes` / `Grupo09!`. " +
+          "Las credenciales de otro grupo contra esta ruta devuelven 403. " +
+          "Credenciales invalidas devuelven 400 (no 401): el 401 esta reservado al fallo de " +
+          "autenticacion de la API key.",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["username", "password"],
+                properties: {
+                  username: { type: "string", example: "g09_reportes" },
+                  password: { type: "string", format: "password", example: "Grupo09!" },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          "200": {
+            description: "Token emitido",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: { data: { $ref: "#/components/schemas/GroupToken" } },
+                },
+              },
+            },
+          },
+          "400": errRef("Usuario o password invalidos"),
+          "403": errRef("Las credenciales pertenecen a otro grupo, o la API key es de otro curso"),
+          "401": errRef("API key invalida, inactiva o ausente"),
+          "429": errRef("Limite de requests excedido"),
+        },
+      },
+    },
+    "/api/v1/g10/auth/token": {
+      post: {
+        tags: ["Tokens de grupo"],
+        summary: "Obtener token de grupo (Grupo 10)",
+        description:
+          "Devuelve un JWT HS256 (1 h) para el Grupo 10. El token se manda en las demas " +
+          "rutas como `Authorization: Bearer <token>`, en lugar de `x-api-key`. " +
+          "Credenciales sembradas: `g10_roles` / `Grupo10!`. " +
+          "Las credenciales de otro grupo contra esta ruta devuelven 403. " +
+          "Credenciales invalidas devuelven 400 (no 401): el 401 esta reservado al fallo de " +
+          "autenticacion de la API key.",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["username", "password"],
+                properties: {
+                  username: { type: "string", example: "g10_roles" },
+                  password: { type: "string", format: "password", example: "Grupo10!" },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          "200": {
+            description: "Token emitido",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: { data: { $ref: "#/components/schemas/GroupToken" } },
+                },
+              },
+            },
+          },
+          "400": errRef("Usuario o password invalidos"),
+          "403": errRef("Las credenciales pertenecen a otro grupo, o la API key es de otro curso"),
+          "401": errRef("API key invalida, inactiva o ausente"),
+          "429": errRef("Limite de requests excedido"),
+        },
+      },
+    },
+
     "/api/v1/sql/select": {
       post: {
         tags: ["SQL Sandbox"],

@@ -10,6 +10,7 @@
 -- =============================================================================
 
 TRUNCATE TABLE
+  qa_training_v2.credenciales,
   qa_training_v2.movimientos,
   qa_training_v2.transferencias,
   qa_training_v2.beneficiarios,
@@ -174,3 +175,39 @@ INSERT INTO qa_training_v2.depositos (usuario_id, cuenta_id, monto, tasa_anual, 
   (2, 11, 2000000.00,  9.75,  60, '2026-05-01', '2026-06-30',   32083.33, 'vencido',   true),
   (7, 9,  1000000.00,  8.50,  30, '2026-04-01', '2026-05-01',    7083.33, 'vencido',   true),
   (4, 5,   500000.00, 10.00, 120, '2026-06-01', '2026-09-29',    4109.59, 'cancelado', true);
+
+
+-- =============================================================================
+-- Credenciales de grupo del curso 2: un usuario + un login por cada uno de los
+-- 5 grupos, para POST /api/v2/g{n}/auth/token. Misma logica que en
+-- seed-data.sql — passwords en claro aca y en el README, bcrypt en la base.
+-- =============================================================================
+
+WITH usuarios_grupo AS (
+  INSERT INTO qa_training_v2.usuarios
+    (nombre, email, documento_tipo, documento_numero, telefono, activo)
+  VALUES
+  ('Grupo 1 - Cuentas Bancarias', 'c2_g01@aiquaa.test', 'CI', '9100001', '0981-900001', true),
+  ('Grupo 2 - Tarjetas de Crédito/Débito', 'c2_g02@aiquaa.test', 'CI', '9100002', '0981-900002', true),
+  ('Grupo 3 - Préstamos', 'c2_g03@aiquaa.test', 'CI', '9100003', '0981-900003', true),
+  ('Grupo 4 - Transferencias y Pagos', 'c2_g04@aiquaa.test', 'CI', '9100004', '0981-900004', true),
+  ('Grupo 5 - Ahorros y Depósitos', 'c2_g05@aiquaa.test', 'CI', '9100005', '0981-900005', true)
+  RETURNING id, email
+)
+INSERT INTO qa_training_v2.credenciales (usuario_id, username, password_hash, grupo)
+SELECT
+  u.id,
+  v.username::text,
+  -- Casts explicitos: los literales de un VALUES entran como `unknown` y sin
+  -- esto Postgres puede no resolver la sobrecarga crypt(text, text).
+  extensions.crypt(v.password::text, extensions.gen_salt('bf', 10)),
+  v.grupo::smallint
+FROM usuarios_grupo u
+JOIN (
+  VALUES
+    ('c2_g01@aiquaa.test', 'c2_g01_cuentas', 'Curso2Grupo01!', 1),
+    ('c2_g02@aiquaa.test', 'c2_g02_tarjetas', 'Curso2Grupo02!', 2),
+    ('c2_g03@aiquaa.test', 'c2_g03_prestamos', 'Curso2Grupo03!', 3),
+    ('c2_g04@aiquaa.test', 'c2_g04_transferencias', 'Curso2Grupo04!', 4),
+    ('c2_g05@aiquaa.test', 'c2_g05_ahorros', 'Curso2Grupo05!', 5)
+) AS v(email, username, password, grupo) ON v.email = u.email;

@@ -91,9 +91,385 @@
       "key": "concepto",
       "value": "Pago de alquiler - E2E",
       "type": "string"
+    },
+    {
+      "key": "token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "idempotencyKey",
+      "value": "",
+      "type": "string"
     }
   ],
   "item": [
+    {
+      "name": "Tokens de grupo (login usuario + password)",
+      "description": "Un endpoint de login por grupo. Devuelve un JWT HS256 de 1 hora que se puede usar como `Authorization: Bearer {{token}}` en lugar de la `x-api-key`.\n\nCada request guarda el token en la variable de coleccion {{token}} desde su script de Tests. Ese encadenado (login -> extraer -> reusar) es exactamente lo que hay que automatizar en la suite.",
+      "item": [
+        {
+          "name": "Grupo 1 - Cuentas Bancarias (token)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200 OK\", () => { pm.response.to.have.status(200); });",
+                  "",
+                  "const body = pm.response.json();",
+                  "",
+                  "pm.test(\"Devuelve un token Bearer de 1 hora\", () => {",
+                  "    pm.expect(body.data.tokenType).to.eql(\"Bearer\");",
+                  "    pm.expect(body.data.expiresIn).to.eql(3600);",
+                  "    pm.expect(body.data.token).to.be.a(\"string\");",
+                  "});",
+                  "",
+                  "// El token queda guardado en la variable de coleccion {{token}}: las requests",
+                  "// de abajo pueden mandarlo como Authorization: Bearer {{token}} en lugar de",
+                  "// la x-api-key. Este es el encadenado que hay que automatizar.",
+                  "pm.collectionVariables.set(\"token\", body.data.token);",
+                  "",
+                  "// Un JWT esta FIRMADO, no cifrado: el payload se lee sin la clave.",
+                  "const payload = JSON.parse(atob(body.data.token.split(\".\")[1]));",
+                  "console.log(\"claims del token:\", payload);",
+                  "",
+                  "pm.test(\"El token declara el grupo y el curso correctos\", () => {",
+                  "    pm.expect(payload.grupo).to.eql(body.data.grupo);",
+                  "    pm.expect(payload.curso).to.eql(body.data.curso);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/g1/auth/token",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "g1",
+                "auth",
+                "token"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"c2_g01_cuentas\",\n  \"password\": \"Curso2Grupo01!\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Login del Grupo 1. Devuelve un JWT HS256 de 1 hora y lo guarda en la variable {{token}}.\n\nProbá tambien:\n- password incorrecto -> 400 con mensaje generico (no dice cual de los dos campos fallo, y es 400 y no 401 porque el 401 esta reservado al fallo de la API key)\n- credenciales de otro grupo contra esta URL -> 403"
+          }
+        },
+        {
+          "name": "Grupo 2 - Tarjetas (token)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200 OK\", () => { pm.response.to.have.status(200); });",
+                  "",
+                  "const body = pm.response.json();",
+                  "",
+                  "pm.test(\"Devuelve un token Bearer de 1 hora\", () => {",
+                  "    pm.expect(body.data.tokenType).to.eql(\"Bearer\");",
+                  "    pm.expect(body.data.expiresIn).to.eql(3600);",
+                  "    pm.expect(body.data.token).to.be.a(\"string\");",
+                  "});",
+                  "",
+                  "// El token queda guardado en la variable de coleccion {{token}}: las requests",
+                  "// de abajo pueden mandarlo como Authorization: Bearer {{token}} en lugar de",
+                  "// la x-api-key. Este es el encadenado que hay que automatizar.",
+                  "pm.collectionVariables.set(\"token\", body.data.token);",
+                  "",
+                  "// Un JWT esta FIRMADO, no cifrado: el payload se lee sin la clave.",
+                  "const payload = JSON.parse(atob(body.data.token.split(\".\")[1]));",
+                  "console.log(\"claims del token:\", payload);",
+                  "",
+                  "pm.test(\"El token declara el grupo y el curso correctos\", () => {",
+                  "    pm.expect(payload.grupo).to.eql(body.data.grupo);",
+                  "    pm.expect(payload.curso).to.eql(body.data.curso);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/g2/auth/token",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "g2",
+                "auth",
+                "token"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"c2_g02_tarjetas\",\n  \"password\": \"Curso2Grupo02!\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Login del Grupo 2. Devuelve un JWT HS256 de 1 hora y lo guarda en la variable {{token}}.\n\nProbá tambien:\n- password incorrecto -> 400 con mensaje generico (no dice cual de los dos campos fallo, y es 400 y no 401 porque el 401 esta reservado al fallo de la API key)\n- credenciales de otro grupo contra esta URL -> 403"
+          }
+        },
+        {
+          "name": "Grupo 3 - Prestamos (token)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200 OK\", () => { pm.response.to.have.status(200); });",
+                  "",
+                  "const body = pm.response.json();",
+                  "",
+                  "pm.test(\"Devuelve un token Bearer de 1 hora\", () => {",
+                  "    pm.expect(body.data.tokenType).to.eql(\"Bearer\");",
+                  "    pm.expect(body.data.expiresIn).to.eql(3600);",
+                  "    pm.expect(body.data.token).to.be.a(\"string\");",
+                  "});",
+                  "",
+                  "// El token queda guardado en la variable de coleccion {{token}}: las requests",
+                  "// de abajo pueden mandarlo como Authorization: Bearer {{token}} en lugar de",
+                  "// la x-api-key. Este es el encadenado que hay que automatizar.",
+                  "pm.collectionVariables.set(\"token\", body.data.token);",
+                  "",
+                  "// Un JWT esta FIRMADO, no cifrado: el payload se lee sin la clave.",
+                  "const payload = JSON.parse(atob(body.data.token.split(\".\")[1]));",
+                  "console.log(\"claims del token:\", payload);",
+                  "",
+                  "pm.test(\"El token declara el grupo y el curso correctos\", () => {",
+                  "    pm.expect(payload.grupo).to.eql(body.data.grupo);",
+                  "    pm.expect(payload.curso).to.eql(body.data.curso);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/g3/auth/token",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "g3",
+                "auth",
+                "token"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"c2_g03_prestamos\",\n  \"password\": \"Curso2Grupo03!\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Login del Grupo 3. Devuelve un JWT HS256 de 1 hora y lo guarda en la variable {{token}}.\n\nProbá tambien:\n- password incorrecto -> 400 con mensaje generico (no dice cual de los dos campos fallo, y es 400 y no 401 porque el 401 esta reservado al fallo de la API key)\n- credenciales de otro grupo contra esta URL -> 403"
+          }
+        },
+        {
+          "name": "Grupo 4 - Transferencias y Pagos (token)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200 OK\", () => { pm.response.to.have.status(200); });",
+                  "",
+                  "const body = pm.response.json();",
+                  "",
+                  "pm.test(\"Devuelve un token Bearer de 1 hora\", () => {",
+                  "    pm.expect(body.data.tokenType).to.eql(\"Bearer\");",
+                  "    pm.expect(body.data.expiresIn).to.eql(3600);",
+                  "    pm.expect(body.data.token).to.be.a(\"string\");",
+                  "});",
+                  "",
+                  "// El token queda guardado en la variable de coleccion {{token}}: las requests",
+                  "// de abajo pueden mandarlo como Authorization: Bearer {{token}} en lugar de",
+                  "// la x-api-key. Este es el encadenado que hay que automatizar.",
+                  "pm.collectionVariables.set(\"token\", body.data.token);",
+                  "",
+                  "// Un JWT esta FIRMADO, no cifrado: el payload se lee sin la clave.",
+                  "const payload = JSON.parse(atob(body.data.token.split(\".\")[1]));",
+                  "console.log(\"claims del token:\", payload);",
+                  "",
+                  "pm.test(\"El token declara el grupo y el curso correctos\", () => {",
+                  "    pm.expect(payload.grupo).to.eql(body.data.grupo);",
+                  "    pm.expect(payload.curso).to.eql(body.data.curso);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/g4/auth/token",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "g4",
+                "auth",
+                "token"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"c2_g04_transferencias\",\n  \"password\": \"Curso2Grupo04!\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Login del Grupo 4. Devuelve un JWT HS256 de 1 hora y lo guarda en la variable {{token}}.\n\nProbá tambien:\n- password incorrecto -> 400 con mensaje generico (no dice cual de los dos campos fallo, y es 400 y no 401 porque el 401 esta reservado al fallo de la API key)\n- credenciales de otro grupo contra esta URL -> 403"
+          }
+        },
+        {
+          "name": "Grupo 5 - Ahorros y Depositos (token)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200 OK\", () => { pm.response.to.have.status(200); });",
+                  "",
+                  "const body = pm.response.json();",
+                  "",
+                  "pm.test(\"Devuelve un token Bearer de 1 hora\", () => {",
+                  "    pm.expect(body.data.tokenType).to.eql(\"Bearer\");",
+                  "    pm.expect(body.data.expiresIn).to.eql(3600);",
+                  "    pm.expect(body.data.token).to.be.a(\"string\");",
+                  "});",
+                  "",
+                  "// El token queda guardado en la variable de coleccion {{token}}: las requests",
+                  "// de abajo pueden mandarlo como Authorization: Bearer {{token}} en lugar de",
+                  "// la x-api-key. Este es el encadenado que hay que automatizar.",
+                  "pm.collectionVariables.set(\"token\", body.data.token);",
+                  "",
+                  "// Un JWT esta FIRMADO, no cifrado: el payload se lee sin la clave.",
+                  "const payload = JSON.parse(atob(body.data.token.split(\".\")[1]));",
+                  "console.log(\"claims del token:\", payload);",
+                  "",
+                  "pm.test(\"El token declara el grupo y el curso correctos\", () => {",
+                  "    pm.expect(payload.grupo).to.eql(body.data.grupo);",
+                  "    pm.expect(payload.curso).to.eql(body.data.curso);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/g5/auth/token",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "g5",
+                "auth",
+                "token"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"c2_g05_ahorros\",\n  \"password\": \"Curso2Grupo05!\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Login del Grupo 5. Devuelve un JWT HS256 de 1 hora y lo guarda en la variable {{token}}.\n\nProbá tambien:\n- password incorrecto -> 400 con mensaje generico (no dice cual de los dos campos fallo, y es 400 y no 401 porque el 401 esta reservado al fallo de la API key)\n- credenciales de otro grupo contra esta URL -> 403"
+          }
+        }
+      ]
+    },
     {
       "name": "SQL - Sandbox del curso 2",
       "description": "SELECT/UPDATE crudos validados por AST contra qa_training_v2.",
