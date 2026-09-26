@@ -120,6 +120,52 @@ Grafana Cloud → **Dashboards → New → Import** → subí los dos JSON de
   límite, p50/p95/p99, respuestas por clase de status, auto-reporte por
   instancia de Vercel, desglose por ruta.
 
+#### Dashboard de la charla (solo datasource Postgres)
+
+Los dos dashboards de arriba necesitan Prometheus (Alloy + cAdvisor corriendo).
+Para la charla contra el deploy real alcanza con el datasource Postgres:
+
+- **`dashboard-charla.json`** — `aiquaa - Charla: rendimiento y monitoreo`,
+  privado. Trafico del curso, logs crudos (con IP), errores por mensaje,
+  conexiones vs 60, esperas, queries activas, `pg_stat_statements`, p50/p95/p99
+  y desglose de `/api/perf/**`. Variable `Superficie` para filtrar curso 1 /
+  curso 2 / perf / sandbox SQL.
+- **`dashboard-charla-publica.json`** — `aiquaa - Charla (publica)`, la copia
+  que se comparte sin login. **Sin** logs crudos ni IPs, **sin** texto de
+  queries (`pg_stat_activity`/`pg_stat_statements` ven toda la instancia
+  compartida, no solo `qa_training`) y sin tablas de `public`. Los dashboards
+  publicos no admiten variables, por eso no tiene `Superficie`.
+
+URL publica (Grafana Cloud → **Dashboards → Shared dashboards** para pausarla
+o revocarla):
+
+https://purplespinach239.grafana.net/public-dashboards/32c376cff7ef437faa3435bd863f5a79
+
+Si se re-importa `dashboard-charla-publica.json`, hay que volver a compartirlo
+y la URL cambia. Cada panel necesita un `id` unico: sin eso el dashboard
+publico resuelve todos los paneles al mismo y quedan en "No data".
+
+En el datasource Postgres, bajar **Max open connections** a 2 (o menos que el
+`CONNECTION LIMIT 3` de `qa_monitor`): el default de 100 no respeta el limite
+del rol y las 60 conexiones de la instancia son compartidas.
+
+#### Si los dashboards quedan vacios
+
+`lib/audit-log.ts` nunca tira: si el `INSERT` en `sql_audit_log` falla, la API
+responde 200 igual y **no queda ningun registro**. Paso en produccion (21 al 26
+de septiembre de 2026): el codigo nuevo escribia `duration_ms`/`status_code`/
+`method`/`route`/`subject` y la base no tenia esas columnas porque
+`db:setup` y `db:setup:monitoring` no se habian corrido despues del deploy.
+Chequeo rapido:
+
+```sql
+SELECT max(created_at) FROM public.sql_audit_log;   -- deberia ser de hace minutos
+SELECT count(*) FROM public.sql_audit_log WHERE route IS NOT NULL;
+```
+
+Despues de cada deploy que toque `sql_audit_log`, correr primero la parte de
+base de datos.
+
 ### 5. Verificar el endpoint de Supabase (hacerlo antes de la charla)
 
 ```bash

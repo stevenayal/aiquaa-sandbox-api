@@ -51,12 +51,21 @@ Vía el SQL Editor de Supabase (o `psql`), en orden:
    filas y no tienen por qué re-insertarse en cada `db:seed`.
 4. `scripts/setup-monitoring.sql` (opcional) — rol de solo lectura `qa_monitor` y la vista
    `public.v_api_metrics`, para el datasource Postgres de Grafana. **Reemplazá
-   `CHANGE_ME_MONITOR_PASSWORD` antes de correrlo.**
+   `CHANGE_ME_MONITOR_PASSWORD` antes de correrlo.** Dashboard público de monitoreo:
+   https://purplespinach239.grafana.net/public-dashboards/32c376cff7ef437faa3435bd863f5a79
+   (detalles en [`perf/README.md`](perf/README.md#dashboard-de-la-charla-solo-datasource-postgres)).
 
 > **Ya aplicado en el proyecto `hocryhxndegslzfiwlnx` ("aiquaa-test-management")** vía el MCP
 > de Supabase — schema, roles, RLS y seed data ya están cargados y verificados con una
 > conexión real (SELECT/UPDATE de punta a punta). Estos pasos son para replicar en otro
 > proyecto Supabase si hiciera falta.
+>
+> **Excepción:** lo que agregó la suite de rendimiento (PR #17) llegó a producción el
+> 2026-09-26 solo en parte — columnas nuevas de `sql_audit_log`, `perf_carga`,
+> `perf_idempotencia`, `v_api_metrics` y los grants de `qa_monitor`. **`qa_training.credenciales`
+> y `qa_training_v2.credenciales` todavía no existen**, así que los logins de grupo con JWT
+> (`/api/v{1,2}/g{n}/auth/token`) fallan hasta correr esa parte de `setup-db.sql`,
+> `setup-db-v2-group-logins.sql` y los seeds.
 >
 > **Nota sobre `qa_writer`**: además de UPDATE necesita SELECT — Postgres lo exige para poder
 > resolver el WHERE/RETURNING de cualquier UPDATE (que en este API siempre lleva WHERE). Sin

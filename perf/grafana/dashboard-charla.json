@@ -1,0 +1,841 @@
+{
+  "__inputs": [
+    {
+      "name": "DS_POSTGRES",
+      "label": "Postgres (qa_monitor)",
+      "type": "datasource",
+      "pluginId": "grafana-postgresql-datasource",
+      "pluginName": "PostgreSQL"
+    }
+  ],
+  "uid": "aiquaa-charla-perf",
+  "title": "aiquaa - Charla: rendimiento y monitoreo",
+  "tags": [
+    "aiquaa",
+    "perf",
+    "charla"
+  ],
+  "timezone": "browser",
+  "refresh": "10s",
+  "time": {
+    "from": "now-7d",
+    "to": "now"
+  },
+  "schemaVersion": 39,
+  "editable": true,
+  "templating": {
+    "list": [
+      {
+        "name": "familia",
+        "label": "Superficie",
+        "type": "custom",
+        "query": "todas,curso 1 (v1),curso 2 (v2),perf,sql sandbox",
+        "current": {
+          "text": "todas",
+          "value": "todas"
+        },
+        "options": [
+          {
+            "text": "todas",
+            "value": "todas",
+            "selected": true
+          },
+          {
+            "text": "curso 1 (v1)",
+            "value": "curso 1 (v1)",
+            "selected": false
+          },
+          {
+            "text": "curso 2 (v2)",
+            "value": "curso 2 (v2)",
+            "selected": false
+          },
+          {
+            "text": "perf",
+            "value": "perf",
+            "selected": false
+          },
+          {
+            "text": "sql sandbox",
+            "value": "sql sandbox",
+            "selected": false
+          }
+        ],
+        "includeAll": false,
+        "multi": false
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "row",
+      "title": "API — logs del curso (public.sql_audit_log)",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "panels": [],
+      "id": 1
+    },
+    {
+      "title": "Requests",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "${DS_POSTGRES}"
+      },
+      "description": "",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 0,
+        "y": 1
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "${DS_POSTGRES}"
+          },
+          "rawQuery": true,
+          "editorMode": "code",
+          "format": "table",
+          "rawSql": "SELECT count(*) AS requests FROM public.sql_audit_log WHERE $__timeFilter(created_at) AND ('$familia' = 'todas' OR (CASE WHEN sql ~ '^[A-Z]+ /api/perf' THEN 'perf' WHEN sql ~ '^[A-Z]+ /api/v2' THEN 'curso 2 (v2)' WHEN sql ~ '^[A-Z]+ /api/v1' THEN 'curso 1 (v1)' ELSE 'sql sandbox' END) = '$familia')"
+        }
+      ],
+      "id": 2
+    },
+    {
+      "title": "Tasa de error",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "${DS_POSTGRES}"
+      },
+      "description": "",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 6,
+        "y": 1
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "${DS_POSTGRES}"
+          },
+          "rawQuery": true,
+          "editorMode": "code",
+          "format": "table",
+          "rawSql": "SELECT coalesce(100.0 * count(*) FILTER (WHERE NOT success) / nullif(count(*),0), 0) AS error_pct FROM public.sql_audit_log WHERE $__timeFilter(created_at) AND ('$familia' = 'todas' OR (CASE WHEN sql ~ '^[A-Z]+ /api/perf' THEN 'perf' WHEN sql ~ '^[A-Z]+ /api/v2' THEN 'curso 2 (v2)' WHEN sql ~ '^[A-Z]+ /api/v1' THEN 'curso 1 (v1)' ELSE 'sql sandbox' END) = '$familia')"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "decimals": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 5
+              },
+              {
+                "color": "red",
+                "value": 20
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "id": 3
+    },
+    {
+      "title": "Conexiones usadas / 60",
+      "type": "gauge",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "${DS_POSTGRES}"
+      },
+      "description": "max_connections = 60 es GLOBAL y compartido con datos de produccion ajenos. Es el techo real del sistema.",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 12,
+        "y": 1
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "${DS_POSTGRES}"
+          },
+          "rawQuery": true,
+          "editorMode": "code",
+          "format": "table",
+          "rawSql": "SELECT count(*) AS conexiones FROM pg_stat_activity"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "max": 60,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 40
+              },
+              {
+                "color": "red",
+                "value": 54
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "id": 4
+    },
+    {
+      "title": "Cache hit ratio",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "${DS_POSTGRES}"
+      },
+      "description": "",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 1
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "${DS_POSTGRES}"
+          },
+          "rawQuery": true,
+          "editorMode": "code",
+          "format": "table",
+          "rawSql": "SELECT 100.0 * blks_hit / nullif(blks_hit + blks_read, 0) AS hit_pct FROM pg_stat_database WHERE datname = current_database()"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "decimals": 2,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 95
+              },
+              {
+                "color": "green",
+                "value": 99
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "id": 5
+    },
+    {
+      "title": "Requests por minuto (ok vs error)",
+      "type": "timeseries",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "${DS_POSTGRES}"
+      },
+      "description": "",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 5
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "${DS_POSTGRES}"
+          },
+          "rawQuery": true,
+          "editorMode": "code",
+          "format": "time_series",
+          "rawSql": "SELECT $__timeGroupAlias(created_at, '1m'), CASE WHEN success THEN 'ok' ELSE 'error' END AS metric, count(*) AS requests FROM public.sql_audit_log WHERE $__timeFilter(created_at) AND ('$familia' = 'todas' OR (CASE WHEN sql ~ '^[A-Z]+ /api/perf' THEN 'perf' WHEN sql ~ '^[A-Z]+ /api/v2' THEN 'curso 2 (v2)' WHEN sql ~ '^[A-Z]+ /api/v1' THEN 'curso 1 (v1)' ELSE 'sql sandbox' END) = '$familia') GROUP BY 1, 2 ORDER BY 1"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "bars",
+            "stacking": {
+              "mode": "normal"
+            },
+            "fillOpacity": 80
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "error"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "red"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "ok"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "green"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "id": 6
+    },
+    {
+      "title": "Requests por superficie",
+      "type": "timeseries",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "${DS_POSTGRES}"
+      },
+      "description": "",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 5
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "${DS_POSTGRES}"
+          },
+          "rawQuery": true,
+          "editorMode": "code",
+          "format": "time_series",
+          "rawSql": "SELECT $__timeGroupAlias(created_at, '1m'), CASE WHEN sql ~ '^[A-Z]+ /api/perf' THEN 'perf' WHEN sql ~ '^[A-Z]+ /api/v2' THEN 'curso 2 (v2)' WHEN sql ~ '^[A-Z]+ /api/v1' THEN 'curso 1 (v1)' ELSE 'sql sandbox' END AS metric, count(*) AS requests FROM public.sql_audit_log WHERE $__timeFilter(created_at) AND ('$familia' = 'todas' OR (CASE WHEN sql ~ '^[A-Z]+ /api/perf' THEN 'perf' WHEN sql ~ '^[A-Z]+ /api/v2' THEN 'curso 2 (v2)' WHEN sql ~ '^[A-Z]+ /api/v1' THEN 'curso 1 (v1)' ELSE 'sql sandbox' END) = '$familia') GROUP BY 1, 2 ORDER BY 1"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 15
+          }
+        },
+        "overrides": []
+      },
+      "id": 7
+    },
+    {
+      "title": "Top rutas",
+      "type": "table",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "${DS_POSTGRES}"
+      },
+      "description": "",
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 0,
+        "y": 13
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "${DS_POSTGRES}"
+          },
+          "rawQuery": true,
+          "editorMode": "code",
+          "format": "table",
+          "rawSql": "SELECT CASE WHEN sql ~ '^(GET|POST|PUT|PATCH|DELETE) /' THEN regexp_replace(split_part(sql, ' ', 2), '/[0-9]+(?=/|$)', '/{id}', 'g') ELSE '(sql sandbox)' END AS ruta, count(*) AS requests, count(*) FILTER (WHERE NOT success) AS errores, round(100.0 * count(*) FILTER (WHERE NOT success) / count(*), 1) AS error_pct, max(created_at) AS ultimo FROM public.sql_audit_log WHERE $__timeFilter(created_at) AND ('$familia' = 'todas' OR (CASE WHEN sql ~ '^[A-Z]+ /api/perf' THEN 'perf' WHEN sql ~ '^[A-Z]+ /api/v2' THEN 'curso 2 (v2)' WHEN sql ~ '^[A-Z]+ /api/v1' THEN 'curso 1 (v1)' ELSE 'sql sandbox' END) = '$familia') GROUP BY 1 ORDER BY 2 DESC LIMIT 25"
+        }
+      ],
+      "id": 8
+    },
+    {
+      "title": "Errores por mensaje",
+      "type": "table",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "${DS_POSTGRES}"
+      },
+      "description": "",
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 12,
+        "y": 13
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "${DS_POSTGRES}"
+          },
+          "rawQuery": true,
+          "editorMode": "code",
+          "format": "table",
+          "rawSql": "SELECT left(coalesce(error, '(sin mensaje)'), 120) AS error, count(*) AS veces, max(created_at) AS ultimo FROM public.sql_audit_log WHERE $__timeFilter(created_at) AND ('$familia' = 'todas' OR (CASE WHEN sql ~ '^[A-Z]+ /api/perf' THEN 'perf' WHEN sql ~ '^[A-Z]+ /api/v2' THEN 'curso 2 (v2)' WHEN sql ~ '^[A-Z]+ /api/v1' THEN 'curso 1 (v1)' ELSE 'sql sandbox' END) = '$familia') AND NOT success GROUP BY 1 ORDER BY 2 DESC LIMIT 25"
+        }
+      ],
+      "id": 9
+    },
+    {
+      "title": "Logs del curso (ultimos 500)",
+      "type": "logs",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "${DS_POSTGRES}"
+      },
+      "description": "",
+      "gridPos": {
+        "h": 12,
+        "w": 24,
+        "x": 0,
+        "y": 23
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "${DS_POSTGRES}"
+          },
+          "rawQuery": true,
+          "editorMode": "code",
+          "format": "table",
+          "rawSql": "SELECT created_at AS time, CASE WHEN success THEN 'info' ELSE 'error' END AS level, (CASE WHEN sql ~ '^[A-Z]+ /api/perf' THEN 'perf' WHEN sql ~ '^[A-Z]+ /api/v2' THEN 'curso 2 (v2)' WHEN sql ~ '^[A-Z]+ /api/v1' THEN 'curso 1 (v1)' ELSE 'sql sandbox' END) || ' | ' || left(sql, 300) || CASE WHEN error IS NOT NULL THEN '  ->  ' || error ELSE '' END AS body, ip FROM public.sql_audit_log WHERE $__timeFilter(created_at) AND ('$familia' = 'todas' OR (CASE WHEN sql ~ '^[A-Z]+ /api/perf' THEN 'perf' WHEN sql ~ '^[A-Z]+ /api/v2' THEN 'curso 2 (v2)' WHEN sql ~ '^[A-Z]+ /api/v1' THEN 'curso 1 (v1)' ELSE 'sql sandbox' END) = '$familia') ORDER BY created_at DESC LIMIT 500"
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "wrapLogMessage": true,
+        "sortOrder": "Descending",
+        "enableLogDetails": true,
+        "dedupStrategy": "none"
+      },
+      "id": 10
+    },
+    {
+      "type": "row",
+      "title": "Postgres bajo carga (point-in-time: refresco cada 10s)",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 35
+      },
+      "panels": [],
+      "id": 11
+    },
+    {
+      "title": "Conexiones por usuario",
+      "type": "bargauge",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "${DS_POSTGRES}"
+      },
+      "description": "",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 36
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "${DS_POSTGRES}"
+          },
+          "rawQuery": true,
+          "editorMode": "code",
+          "format": "table",
+          "rawSql": "SELECT coalesce(usename, '(interno)') AS usuario, count(*) AS conexiones FROM pg_stat_activity GROUP BY 1 ORDER BY 2 DESC"
+        }
+      ],
+      "options": {
+        "orientation": "horizontal",
+        "displayMode": "gradient",
+        "reduceOptions": {
+          "values": true,
+          "calcs": [],
+          "fields": ""
+        }
+      },
+      "id": 12
+    },
+    {
+      "title": "Conexiones por estado",
+      "type": "bargauge",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "${DS_POSTGRES}"
+      },
+      "description": "",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 36
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "${DS_POSTGRES}"
+          },
+          "rawQuery": true,
+          "editorMode": "code",
+          "format": "table",
+          "rawSql": "SELECT coalesce(state, '(sin estado)') AS estado, count(*) AS conexiones FROM pg_stat_activity WHERE backend_type = 'client backend' GROUP BY 1 ORDER BY 2 DESC"
+        }
+      ],
+      "options": {
+        "orientation": "horizontal",
+        "displayMode": "gradient",
+        "reduceOptions": {
+          "values": true,
+          "calcs": [],
+          "fields": ""
+        }
+      },
+      "id": 13
+    },
+    {
+      "title": "Esperas ahora mismo",
+      "type": "table",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "${DS_POSTGRES}"
+      },
+      "description": "",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 36
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "${DS_POSTGRES}"
+          },
+          "rawQuery": true,
+          "editorMode": "code",
+          "format": "table",
+          "rawSql": "SELECT coalesce(wait_event_type, 'sin espera') AS tipo_espera, coalesce(wait_event, '-') AS evento, count(*) AS backends FROM pg_stat_activity WHERE backend_type = 'client backend' GROUP BY 1, 2 ORDER BY 3 DESC"
+        }
+      ],
+      "id": 14
+    },
+    {
+      "title": "Queries activas (mas de 100 ms)",
+      "type": "table",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "${DS_POSTGRES}"
+      },
+      "description": "",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 44
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "${DS_POSTGRES}"
+          },
+          "rawQuery": true,
+          "editorMode": "code",
+          "format": "table",
+          "rawSql": "SELECT pid, usename AS usuario, state, round(extract(epoch FROM now() - query_start) * 1000) AS ms, wait_event_type, left(query, 160) AS query FROM pg_stat_activity WHERE state <> 'idle' AND backend_type = 'client backend' AND pid <> pg_backend_pid() AND now() - query_start > interval '100 ms' ORDER BY ms DESC LIMIT 20"
+        }
+      ],
+      "id": 15
+    },
+    {
+      "title": "Tuplas muertas y autovacuum",
+      "type": "table",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "${DS_POSTGRES}"
+      },
+      "description": "",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 44
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "${DS_POSTGRES}"
+          },
+          "rawQuery": true,
+          "editorMode": "code",
+          "format": "table",
+          "rawSql": "SELECT schemaname || '.' || relname AS tabla, n_live_tup AS vivas, n_dead_tup AS muertas, seq_scan, idx_scan, last_autovacuum, last_autoanalyze FROM pg_stat_user_tables WHERE schemaname IN ('qa_training', 'qa_training_v2', 'public') ORDER BY n_dead_tup DESC LIMIT 15"
+        }
+      ],
+      "id": 16
+    },
+    {
+      "type": "row",
+      "title": "Hard parse — pg_stat_statements (requiere GRANT USAGE ON SCHEMA extensions TO qa_monitor)",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 52
+      },
+      "panels": [],
+      "id": 17
+    },
+    {
+      "title": "Entradas en pg_stat_statements",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "${DS_POSTGRES}"
+      },
+      "description": "Con SQL parametrizado queda plano; con /api/perf/db?mode=literal se dispara: cada literal distinto es un statement nuevo.",
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 0,
+        "y": 53
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "${DS_POSTGRES}"
+          },
+          "rawQuery": true,
+          "editorMode": "code",
+          "format": "table",
+          "rawSql": "SELECT count(*) AS statements FROM extensions.pg_stat_statements"
+        }
+      ],
+      "id": 18
+    },
+    {
+      "title": "Top 15 queries por tiempo total",
+      "type": "table",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "${DS_POSTGRES}"
+      },
+      "description": "",
+      "gridPos": {
+        "h": 8,
+        "w": 18,
+        "x": 6,
+        "y": 53
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "${DS_POSTGRES}"
+          },
+          "rawQuery": true,
+          "editorMode": "code",
+          "format": "table",
+          "rawSql": "SELECT calls, round(total_exec_time::numeric, 1) AS total_ms, round(mean_exec_time::numeric, 2) AS mean_ms, rows, left(query, 200) AS query FROM extensions.pg_stat_statements ORDER BY total_exec_time DESC LIMIT 15"
+        }
+      ],
+      "id": 19
+    },
+    {
+      "type": "row",
+      "title": "Latencia y status (requiere las columnas nuevas de sql_audit_log + vista v_api_metrics)",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 61
+      },
+      "panels": [],
+      "id": 20
+    },
+    {
+      "title": "Latencia del handler p50 / p95 / p99",
+      "type": "timeseries",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "${DS_POSTGRES}"
+      },
+      "description": "",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 62
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "${DS_POSTGRES}"
+          },
+          "rawQuery": true,
+          "editorMode": "code",
+          "format": "time_series",
+          "rawSql": "SELECT $__timeGroupAlias(created_at, '30s'), percentile_cont(0.5) WITHIN GROUP (ORDER BY duration_ms) AS p50, percentile_cont(0.95) WITHIN GROUP (ORDER BY duration_ms) AS p95, percentile_cont(0.99) WITHIN GROUP (ORDER BY duration_ms) AS p99 FROM public.v_api_metrics WHERE $__timeFilter(created_at) AND duration_ms IS NOT NULL GROUP BY 1 ORDER BY 1"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "id": 21
+    },
+    {
+      "title": "Respuestas por clase de status",
+      "type": "timeseries",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "${DS_POSTGRES}"
+      },
+      "description": "",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 62
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "${DS_POSTGRES}"
+          },
+          "rawQuery": true,
+          "editorMode": "code",
+          "format": "time_series",
+          "rawSql": "SELECT $__timeGroupAlias(created_at, '30s'), CASE WHEN status_code = 429 THEN '429 rate limited' WHEN status_code >= 500 THEN '5xx' WHEN status_code >= 400 THEN '4xx' ELSE '2xx' END AS metric, count(*) AS requests FROM public.v_api_metrics WHERE $__timeFilter(created_at) AND status_code IS NOT NULL GROUP BY 1, 2 ORDER BY 1"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "bars",
+            "stacking": {
+              "mode": "normal"
+            },
+            "fillOpacity": 80
+          }
+        },
+        "overrides": []
+      },
+      "id": 22
+    },
+    {
+      "title": "/api/perf por ruta: volumen, errores y p95",
+      "type": "table",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "${DS_POSTGRES}"
+      },
+      "description": "",
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 70
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "${DS_POSTGRES}"
+          },
+          "rawQuery": true,
+          "editorMode": "code",
+          "format": "table",
+          "rawSql": "SELECT route, method, count(*) AS requests, count(*) FILTER (WHERE status_code >= 400) AS errores, count(*) FILTER (WHERE status_code = 429) AS rate_limited, round(percentile_cont(0.95) WITHIN GROUP (ORDER BY duration_ms)::numeric, 1) AS p95_ms, max(duration_ms) AS max_ms FROM public.v_api_metrics WHERE $__timeFilter(created_at) AND route LIKE '/api/perf%' GROUP BY 1, 2 ORDER BY 3 DESC"
+        }
+      ],
+      "id": 23
+    }
+  ]
+}
