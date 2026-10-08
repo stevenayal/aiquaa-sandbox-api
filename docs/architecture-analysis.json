@@ -1,0 +1,142 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Arquitectura de aiquaa Sandbox API",
+    "output": "docs/architecture-analysis.html",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "request-path",
+        "label": "Ruta de una solicitud",
+        "focus": ["students", "next-api", "auth", "rate-limit", "audit", "postgres"],
+        "note": "Todas las rutas protegidas autentican, limitan y auditan antes de persistir o responder."
+      },
+      {
+        "id": "sql-sandbox",
+        "label": "Sandbox de SQL",
+        "focus": ["students", "next-api", "sql-validator", "reader-writer", "postgres"],
+        "note": "El SQL enviado por estudiantes se valida antes de ejecutarse con roles limitados."
+      },
+      {
+        "id": "rest-api",
+        "label": "REST de SQL fijo",
+        "focus": ["students", "next-api", "api-role", "postgres"],
+        "note": "Las rutas REST usan consultas definidas en código con un rol dedicado."
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "students",
+      "type": "external",
+      "label": "Alumnos y Postman",
+      "sublabel": "clientes REST",
+      "pos": [40, 310],
+      "size": [150, 64]
+    },
+    {
+      "id": "next-api",
+      "type": "backend",
+      "label": "Next.js App Router",
+      "sublabel": "/api/v1/* en Node.js",
+      "pos": [280, 310],
+      "size": [160, 64],
+      "tag": "Vercel"
+    },
+    {
+      "id": "auth",
+      "type": "security",
+      "label": "Autenticacion API key",
+      "sublabel": "public.api_keys",
+      "pos": [520, 120],
+      "size": [160, 64]
+    },
+    {
+      "id": "rate-limit",
+      "type": "cloud",
+      "label": "Upstash Redis",
+      "sublabel": "30 req/min por key",
+      "pos": [520, 245],
+      "size": [160, 64]
+    },
+    {
+      "id": "sql-validator",
+      "type": "security",
+      "label": "Validador SQL AST",
+      "sublabel": "SELECT o UPDATE permitido",
+      "pos": [520, 405],
+      "size": [160, 64]
+    },
+    {
+      "id": "reader-writer",
+      "type": "database",
+      "label": "Pools qa_reader / qa_writer",
+      "sublabel": "SQL libre aislado",
+      "pos": [760, 405],
+      "size": [180, 64]
+    },
+    {
+      "id": "api-role",
+      "type": "database",
+      "label": "Pool qa_api",
+      "sublabel": "REST con SQL fijo",
+      "pos": [760, 285],
+      "size": [180, 64]
+    },
+    {
+      "id": "audit",
+      "type": "database",
+      "label": "Pool meta",
+      "sublabel": "api_keys y sql_audit_log",
+      "pos": [760, 120],
+      "size": [180, 64]
+    },
+    {
+      "id": "postgres",
+      "type": "database",
+      "label": "Supabase Postgres",
+      "sublabel": "qa_training y public",
+      "pos": [1010, 310],
+      "size": [170, 64],
+      "tag": "transaction pooler"
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "security-group",
+      "label": "Aislamiento por roles de base de datos",
+      "wraps": ["reader-writer", "api-role", "audit"],
+      "pad": 28
+    }
+  ],
+  "connections": [
+    { "id": "client-request", "from": "students", "to": "next-api", "label": "HTTPS + x-api-key", "variant": "emphasis" },
+    { "id": "authenticate", "from": "next-api", "to": "auth", "label": "verifica clave", "variant": "security" },
+    { "id": "limit", "from": "next-api", "to": "rate-limit", "label": "aplica limite", "labelDx": -96 },
+    { "id": "audit-log", "from": "next-api", "to": "audit", "label": "audita resultado", "variant": "dashed" },
+    { "id": "raw-sql", "from": "next-api", "to": "sql-validator", "label": "solo /sql/*", "variant": "security" },
+    { "id": "validated-sql", "from": "sql-validator", "to": "reader-writer", "label": "SQL validado" },
+    { "id": "fixed-sql", "from": "next-api", "to": "api-role", "label": "REST de SQL fijo", "labelDy": 42 },
+    { "id": "sandbox-data", "from": "reader-writer", "to": "postgres", "label": "qa_training" },
+    { "id": "rest-data", "from": "api-role", "to": "postgres", "label": "qa_training", "labelAt": [1041, 388] },
+    { "id": "meta-data", "from": "audit", "to": "postgres", "label": "public" }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Superficies",
+      "items": ["Sandbox de SQL crudo para SELECT y UPDATE", "Rutas REST con consultas escritas en codigo"]
+    },
+    {
+      "dot": "emerald",
+      "title": "Controles",
+      "items": ["API key, limite de 30 solicitudes por minuto y auditoria", "Validacion AST antes del SQL aportado por estudiantes"]
+    },
+    {
+      "dot": "violet",
+      "title": "Datos",
+      "items": ["Pools y roles separados para SQL libre, REST y metadatos", "Supabase mediante transaction pooler con TLS"]
+    }
+  ]
+}
