@@ -557,7 +557,7 @@ transacción con `SELECT ... FOR UPDATE`.
 | 3 | `POST /api/v2/prestamos/{id}/aprobar` | Aprueba y **genera el plan de cuotas** (cuota = `monto * (1 + tasa/100) / plazo`, vencimientos mensuales) |
 | 3 | `GET /api/v2/prestamos/{id}/cuotas` | Plan de cuotas (`?estado=pendiente|pagada|vencida`) |
 | 3 | `POST /api/v2/prestamos/{id}/cuotas/{numero}/pagar` | Paga una cuota y descuenta el saldo pendiente; el préstamo pasa a `pagado` al llegar a 0 |
-| 4 | `GET/POST /api/v2/beneficiarios`, `GET/PUT/DELETE /api/v2/beneficiarios/{id}` | CRUD de beneficiarios (`UNIQUE (usuario_id, numero_cuenta)` → `409`) |
+| 4 | `GET/POST /api/v2/beneficiarios`, `GET/PUT/DELETE /api/v2/beneficiarios/{id}` | CRUD de beneficiarios (`UNIQUE (usuario_id, numero_cuenta)` entre los activos → `409`; una cuenta dada de baja se puede volver a agendar) |
 | 4 | `GET/POST /api/v2/transferencias`, `GET /api/v2/transferencias/{id}` | Transferencia interna (`cuentaDestinoId`) o externa (`beneficiarioId`) — exactamente uno de los dos; debita, acredita y escribe los movimientos |
 | 4 | `POST /api/v2/transferencias/{id}/anular` | Contraasiento: revierte saldos y deja la transferencia en `anulada` (no la borra) |
 | 5 | `GET/POST /api/v2/ahorros`, `GET/PUT/DELETE /api/v2/ahorros/{id}` | CRUD de planes de ahorro (incluye `falta_para_meta` calculado) |

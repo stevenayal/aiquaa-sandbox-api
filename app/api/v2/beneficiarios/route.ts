@@ -31,8 +31,9 @@ export const GET = apiRoute({
   },
 });
 
-// UNIQUE (usuario_id, numero_cuenta): cargar dos veces el mismo beneficiario
-// devuelve 409 (lo mapea apiRoute desde el SQLSTATE 23505).
+// UNIQUE (usuario_id, numero_cuenta) WHERE activo: cargar dos veces el mismo
+// beneficiario devuelve 409 (lo mapea apiRoute desde el SQLSTATE 23505). Una
+// cuenta dada de baja se puede volver a agendar: queda como una fila nueva.
 export const POST = apiRoute({
   curso: 2,
   inputSchema: postSchema,

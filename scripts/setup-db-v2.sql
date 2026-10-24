@@ -141,9 +141,19 @@ CREATE TABLE IF NOT EXISTS qa_training_v2.beneficiarios (
   numero_cuenta  text NOT NULL,
   alias          text,
   activo         boolean NOT NULL DEFAULT true,
-  created_at     timestamptz NOT NULL DEFAULT now(),
-  UNIQUE (usuario_id, numero_cuenta)
+  created_at     timestamptz NOT NULL DEFAULT now()
 );
+
+-- Un mismo numero de cuenta no puede estar agendado dos veces para el mismo
+-- usuario, pero solo entre los beneficiarios activos: el DELETE es soft-delete
+-- (activo = false) y volver a agendar una cuenta borrada crea una fila nueva,
+-- sin tocar la vieja ni las transferencias que la referencian.
+-- El DROP migra las bases creadas con el UNIQUE total original.
+ALTER TABLE qa_training_v2.beneficiarios
+  DROP CONSTRAINT IF EXISTS beneficiarios_usuario_id_numero_cuenta_key;
+CREATE UNIQUE INDEX IF NOT EXISTS beneficiarios_usuario_cuenta_activo_key
+  ON qa_training_v2.beneficiarios (usuario_id, numero_cuenta)
+  WHERE activo;
 
 CREATE TABLE IF NOT EXISTS qa_training_v2.transferencias (
   id                 bigserial PRIMARY KEY,
