@@ -1104,7 +1104,9 @@ export const openApiSpecV2 = {
       post: {
         tags: [G4],
         summary: "Registrar beneficiario (Grupo 4)",
-        description: "409 si el usuario ya tiene cargado ese número de cuenta.",
+        description:
+          "409 si el usuario ya tiene un beneficiario activo con ese número de cuenta. " +
+          "Un beneficiario dado de baja no bloquea volver a agendar la cuenta (se crea uno nuevo).",
         requestBody: body(["usuarioId", "nombre", "banco", "numeroCuenta"], {
           usuarioId: { type: "integer" },
           nombre: { type: "string" },
