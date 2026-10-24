@@ -69,7 +69,7 @@ prometheus.scrape "postgres" {
 // El endpoint exige API key. Se manda como header, no en la URL: una query
 // string termina en logs y en el historial del navegador.
 //
-// Intervalo de 15s: cada scrape consume presupuesto del rate limit de 30/min
+// Intervalo de 15s: cada scrape consume presupuesto del rate limit de 200/min
 // de /api/perf/metrics, y ademas hace una consulta de percentiles contra
 // sql_audit_log. Bajarlo de 15s es medir el instrumento con el instrumento.
 // ---------------------------------------------------------------------------

@@ -65,7 +65,7 @@ export const openApiSpecPerf = {
       "\n\n" +
       "**Los límites de este namespace son distintos a los del curso.** Cada ruta tiene su " +
       "propio bucket en Redis, así que estresar `/api/perf/echo` a 3000/min NO consume el " +
-      "presupuesto de 30/min de las rutas del curso.\n\n" +
+      "presupuesto de 200/min de las rutas del curso.\n\n" +
       `**Techo real del sistema: ${SYSTEM_LIMITS.postgres.maxConnections} conexiones de ` +
       "Postgres** — no la CPU de la API. Consultá `GET /api/perf/limits` antes de diseñar " +
       "un plan de carga.\n\n" +
@@ -75,7 +75,7 @@ export const openApiSpecPerf = {
   servers: [{ url: "/" }],
   tags: [
     { name: CARGA, description: "Endpoints diseñados para ser estresados. Rate limits altos y auditoría muestreada." },
-    { name: INTROSPECCION, description: "Techos del sistema y métricas agregadas. Se quedan en 30/min: la prueba no debe llevarse puesto el instrumento que la mide." },
+    { name: INTROSPECCION, description: "Techos del sistema y métricas agregadas. Se quedan en 200/min: la prueba no debe llevarse puesto el instrumento que la mide." },
   ],
   components: {
     securitySchemes: {

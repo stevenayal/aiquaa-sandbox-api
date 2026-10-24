@@ -34,7 +34,7 @@ export const COMUN = {
 
   precondiciones: [
     "Toda request a la API debe enviar el header `x-api-key` con una clave existente y con `active = true` en la tabla `public.api_keys`; sin header o con clave inválida/inactiva la respuesta es `401 UNAUTHORIZED` con el mensaje genérico \"Invalid or inactive API key.\".",
-    "Cada API key admite un máximo de **30 requests por minuto** (ventana deslizante). Superado el límite la API responde `429 RATE_LIMITED` con los headers `Retry-After`, `X-RateLimit-Limit`, `X-RateLimit-Remaining` y `X-RateLimit-Reset`.",
+    "Cada API key admite un máximo de **200 requests por minuto** (ventana deslizante). Superado el límite la API responde `429 RATE_LIMITED` con los headers `Retry-After`, `X-RateLimit-Limit`, `X-RateLimit-Remaining` y `X-RateLimit-Reset`.",
     "Los datos de práctica viven en el schema aislado `qa_training` y se cargan con `scripts/seed-data.sql`; la data es determinística, por lo que un escenario puede apoyarse en los registros sembrados.",
     "La API no expone borrado físico: el rol `qa_api` no tiene permiso `DELETE` en Postgres, y todo endpoint `DELETE` de la API hace baja lógica (`activo = false`), devolviendo `204 No Content` sin cuerpo.",
     "Casi todas las tablas de negocio (`sesiones`, `transferencias`, `facturas`, `tarjetas`, `notificaciones`, `ordenes`, `reservas`, `movimientos`, `roles`, además de `usuarios` y `cuentas` que ya la tenían) tienen columna `activo`/`activa`; todo `GET`, `PUT` y `DELETE` de esa tabla filtra u opera solo sobre filas con `activo = true` — una fila dada de baja deja de ser visible y de poder reemplazarse, pero no se borra.",
@@ -60,7 +60,7 @@ export const COMUN = {
 
   errores: [
     ["`UNAUTHORIZED`", "401", "Falta el header `x-api-key`, o la clave no existe o está inactiva."],
-    ["`RATE_LIMITED`", "429", "Se superaron las 30 requests por minuto de esa API key."],
+    ["`RATE_LIMITED`", "429", "Se superaron las 200 requests por minuto de esa API key."],
     ["`VALIDATION_ERROR`", "400", "La entrada no cumple el esquema de la ruta, el JSON es inválido, o Postgres rechazó una clave foránea/CHECK."],
     ["`EXECUTION_ERROR`", "400", "La consulta falló en la base de datos por un motivo no cubierto por los códigos anteriores."],
     ["`NOT_FOUND`", "404", "El recurso indicado no existe, ya está dado de baja (`activo=false`), o no está en un estado que admita la operación."],

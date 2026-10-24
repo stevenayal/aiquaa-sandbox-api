@@ -12,7 +12,7 @@ export const PERF_RATE_LIMITS = {
   echoLimited: { requests: 10, windowSeconds: 60, bucket: "perf-echo-limited" },
   dbRead: { requests: 1000, windowSeconds: 60, bucket: "perf-db-read" },
   dbWrite: { requests: 300, windowSeconds: 60, bucket: "perf-db-write" },
-  // Los endpoints de introspeccion se quedan en 30/min: no tiene sentido que
+  // Los endpoints de introspeccion se quedan en el limite del curso (200/min): no tiene sentido que
   // la propia prueba de carga se lleve puesto el endpoint que la mide.
   meta: DEFAULT_RATE_LIMIT,
 } satisfies Record<string, RateLimitConfig>;

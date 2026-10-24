@@ -46,7 +46,7 @@ export interface ApiRouteOptions<TInput> {
   // frontend necesita para descubrir el curso del alumno, y /api/perf/**, que
   // es superficie de demo y no pertenece a ninguna cohorte.
   curso?: number;
-  // Limite propio de la ruta. Omitido = DEFAULT_RATE_LIMIT (30/min), que es lo
+  // Limite propio de la ruta. Omitido = DEFAULT_RATE_LIMIT (200/min), que es lo
   // que usan las 72 rutas del curso. Cada config necesita su propio `bucket`
   // (ver lib/rate-limit.ts) o dos rutas comparten ventana en Redis.
   rateLimit?: RateLimitConfig;
