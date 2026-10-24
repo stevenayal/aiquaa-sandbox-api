@@ -99,7 +99,7 @@ Every route file under `app/api/v1/**` has `export const runtime = "nodejs"` —
 `node-sql-parser` do not run under the Edge runtime.
 
 `apiRoute` also takes two optional knobs, both used only by `/api/perf/**`:
-`rateLimit` (a `RateLimitConfig`; omitted = the shared 30/min) and `auditSampleRate`.
+`rateLimit` (a `RateLimitConfig`; omitted = the shared 200/min) and `auditSampleRate`.
 `RouteContext` carries `headers` (the raw request `Headers` — needed for `Idempotency-Key`,
 which is protocol metadata, not a parameter) and `grupo` (set only when the subject
 authenticated with a group JWT). `ApiRouteResult` takes an optional `headers` map; if the
@@ -201,7 +201,7 @@ Postgres gotchas already hit and fixed here — don't reintroduce them:
 - `lib/rate-limit.ts` — Upstash Redis sliding window, keyed by `apiKeyId` (not IP, since
   students may share a classroom network). The limit is **per route**: `checkRateLimit(id,
   cfg)` takes a `RateLimitConfig { requests, windowSeconds, bucket }`, defaulting to
-  `DEFAULT_RATE_LIMIT` (30/60s). **Every distinct config needs its own `bucket`** — the Redis
+  `DEFAULT_RATE_LIMIT` (200/60s). **Every distinct config needs its own `bucket`** — the Redis
   prefix is `aiquaa-sandbox:${bucket}`, and two limits sharing a bucket share the keys, so the
   permissive route drains the strict route's window. The 429 message is built by
   `rateLimitMessage(cfg)`; never hardcode "30 requests per minute" again. Successful responses

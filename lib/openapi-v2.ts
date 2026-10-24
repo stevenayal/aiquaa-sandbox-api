@@ -87,7 +87,7 @@ export const openApiSpecV2 = {
       "pero contra un schema Postgres separado (qa_training_v2): los datos del curso 1 y del " +
       "curso 2 no se tocan entre sí. Cada API key pertenece a un curso — una key del curso 1 " +
       "contra estas rutas recibe 403, y viceversa. Header obligatorio: x-api-key. " +
-      "Límite de 30 requests/minuto por key. Tipos en las respuestas: los ids son números, " +
+      "Límite de 200 requests/minuto por key. Tipos en las respuestas: los ids son números, " +
       "las fechas `date` vienen como texto YYYY-MM-DD y los importes (`numeric`) como string " +
       "para no perder centavos por punto flotante.",
   },

@@ -35,11 +35,11 @@ Documentados en **`/docs/perf`** (Scalar). Spec en `lib/openapi-perf.ts`.
 | `GET /api/perf/echo-limited` | **10/min** | Gemelo exacto. La pared de 429. |
 | `GET /api/perf/db` | 1000/min | `?mode=parametrizada\|literal`, `?indexed=true\|false` |
 | `POST /api/perf/db` | 300/min | Escritura con `Idempotency-Key` obligatorio |
-| `GET /api/perf/limits` | 30/min | Los techos del sistema |
-| `GET /api/perf/metrics` | 30/min | p50/p95/p99, errores, proceso. `?format=prometheus` |
+| `GET /api/perf/limits` | 200/min | Los techos del sistema |
+| `GET /api/perf/metrics` | 200/min | p50/p95/p99, errores, proceso. `?format=prometheus` |
 
 Cada ruta tiene su **propio bucket de Redis**: estresar `/echo` a 3000/min no
-toca el presupuesto de 30/min de las 72 rutas del curso.
+toca el presupuesto de 200/min de las 72 rutas del curso.
 
 `/api/perf/**` no declara `curso`, así que acepta cualquier API key válida de
 cualquiera de las dos cohortes. Conviene crear una key dedicada:

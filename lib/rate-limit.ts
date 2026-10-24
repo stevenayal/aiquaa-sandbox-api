@@ -16,15 +16,15 @@ export interface RateLimitConfig {
   // Namespace de las claves en Redis. TIENE que ser distinto por cada config
   // distinta: dos limites que comparten bucket comparten las mismas claves, y
   // la ruta mas permisiva le vacia la ventana a la mas estricta (una corrida
-  // de carga contra /api/perf/echo dejaria a los alumnos sin sus 30/min).
+  // de carga contra /api/perf/echo dejaria a los alumnos sin sus 200/min).
   bucket: string;
 }
 
-// 30 requests/minuto por API key — generoso para exploracion interactiva con
-// Postman, suficientemente ajustado para frenar el bucle descontrolado de un
+// 200 requests/minuto por API key — generoso para exploracion interactiva y
+// suites automatizadas, suficientemente ajustado para frenar el bucle descontrolado de un
 // alumno. Es el limite de las 72 rutas del curso; solo /api/perf/** lo sube.
 export const DEFAULT_RATE_LIMIT: RateLimitConfig = {
-  requests: 30,
+  requests: 200,
   windowSeconds: 60,
   bucket: "default",
 };

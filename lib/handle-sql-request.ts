@@ -31,7 +31,7 @@ export interface HandleSqlRequestOptions {
   curso?: number;
   schema?: string;
   allowedTables?: readonly string[];
-  // Limite propio de la ruta; omitido = DEFAULT_RATE_LIMIT (30/min). Ver
+  // Limite propio de la ruta; omitido = DEFAULT_RATE_LIMIT (200/min). Ver
   // lib/rate-limit.ts: cada config necesita su propio `bucket`.
   rateLimit?: RateLimitConfig;
 }

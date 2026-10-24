@@ -374,7 +374,7 @@ devuelve el grupo de curso asignado a un email real de alumno — ver sección 5
 | `404 Not Found` | Recurso inexistente o ya soft-eliminado (`activo=false`) |
 | `405 Method Not Allowed` | Verbo HTTP no soportado por la ruta (automático de Next.js, ninguna ruta lo devuelve a mano) |
 | `409 Conflict` | Violación de constraint unique en Postgres (ej. `numeroFactura`/`email`/`nombre` duplicado) |
-| `429 Too Many Requests` | Límite de 30 requests/minuto excedido |
+| `429 Too Many Requests` | Límite de 200 requests/minuto excedido |
 | `500 Internal Server Error` | Error inesperado (falla de autenticación/infra) |
 
 ## Colección Postman
@@ -533,11 +533,11 @@ real deja el sandbox inservible para el resto de la clase). `CONNECTION LIMIT 10
 Las API keys del curso 2 siguen el mismo corte: una por grupo (`c2_g01_cuentas`,
 `c2_g02_tarjetas`, `c2_g03_prestamos`, `c2_g04_transferencias`, `c2_g05_ahorros`) más una
 compartida de demo (`demo_test_c2`), todas con `curso = 2`. Una key por grupo le da a cada
-equipo sus propios 30 requests/minuto y deja el `sql_audit_log` separado por grupo.
+equipo sus propios 200 requests/minuto y deja el `sql_audit_log` separado por grupo.
 
 ### Endpoints REST del curso 2
 
-Mismas convenciones que el curso 1: header `x-api-key`, 30 requests/minuto, `PUT` reemplaza
+Mismas convenciones que el curso 1: header `x-api-key`, 200 requests/minuto, `PUT` reemplaza
 solo campos de negocio, `DELETE` es soft-delete con `204`, y las acciones de negocio van por
 `POST`/`PATCH` sobre sub-rutas. Los endpoints que mueven dinero corren dentro de una
 transacción con `SELECT ... FOR UPDATE`.
@@ -631,13 +631,13 @@ charla, en **[perf/README-charla.md](perf/README-charla.md)**.
 | `GET /api/perf/echo-limited` | **10/min** | El mismo handler con límite bajo: la pared de 429 |
 | `GET /api/perf/db` | 1000/min | Carga real. `?mode=parametrizada\|literal`, `?indexed=true\|false` |
 | `POST /api/perf/db` | 300/min | Escritura con `Idempotency-Key` obligatorio |
-| `GET /api/perf/limits` | 30/min | Los techos conocidos del sistema |
-| `GET /api/perf/metrics` | 30/min | p50/p95/p99, tasa de error, consumo del proceso. `?format=prometheus` |
+| `GET /api/perf/limits` | 200/min | Los techos conocidos del sistema |
+| `GET /api/perf/metrics` | 200/min | p50/p95/p99, tasa de error, consumo del proceso. `?format=prometheus` |
 
 Tres decisiones que conviene conocer antes de tocar esto:
 
 - **Rate limits por ruta, con buckets separados en Redis.** Estresar `/api/perf/echo` a
-  3000/min no consume el presupuesto de 30/min de las 72 rutas del curso. Dos límites que
+  3000/min no consume el presupuesto de 200/min de las 72 rutas del curso. Dos límites que
   compartieran `bucket` compartirían las claves de Redis y se vaciarían la ventana entre sí.
 - **Auditoría muestreada** en `/api/perf/**` (echo 5%, db 10%). A 3000 req/min el `INSERT` en
   `sql_audit_log` —que va por el pool `app_meta` con `max: 1`— sería el cuello de botella de

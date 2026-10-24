@@ -7,7 +7,7 @@ const logAuditMock = vi.fn();
 vi.mock("./auth", () => ({ authenticate: authenticateMock }));
 vi.mock("./rate-limit", () => ({
   checkRateLimit: checkRateLimitMock,
-  DEFAULT_RATE_LIMIT: { requests: 30, windowSeconds: 60, bucket: "default" },
+  DEFAULT_RATE_LIMIT: { requests: 200, windowSeconds: 60, bucket: "default" },
   rateLimitMessage: () => "Rate limit exceeded.",
 }));
 vi.mock("./audit-log", () => ({

@@ -824,7 +824,7 @@ export const openApiSpec = {
         summary: "Ejecuta un statement SELECT",
         description:
           "Acepta exactamente un statement SELECT sobre las tablas del schema qa_training " +
-          "(ver README del repo para el listado completo). Límite: 30 requests/minuto por " +
+          "(ver README del repo para el listado completo). Límite: 200 requests/minuto por " +
           "API key.",
         requestBody: {
           required: true,
@@ -875,7 +875,7 @@ export const openApiSpec = {
         description:
           "Acepta exactamente un statement UPDATE con cláusula WHERE obligatoria, sobre las " +
           "tablas del schema qa_training (ver README del repo para el listado completo). " +
-          "Límite: 30 requests/minuto por API key.",
+          "Límite: 200 requests/minuto por API key.",
         requestBody: {
           required: true,
           content: {
