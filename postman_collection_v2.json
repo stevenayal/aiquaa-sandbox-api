@@ -2138,6 +2138,127 @@
               "raw": "{\n  \"motivo\": \"Cargo duplicado\"\n}"
             }
           }
+        },
+        {
+          "name": "Listar facturas pendientes",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/facturas?usuarioId=1&estado=pendiente",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "facturas"
+              ],
+              "query": [
+                {
+                  "key": "usuarioId",
+                  "value": "1"
+                },
+                {
+                  "key": "estado",
+                  "value": "pendiente"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Obtener factura por id",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/facturas/1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "facturas",
+                "1"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Registrar factura pendiente",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/facturas",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "facturas"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"usuarioId\": 1,\n  \"proveedor\": \"ANDE\",\n  \"numeroFactura\": \"001-001-0000123\",\n  \"monto\": 150000,\n  \"fechaVencimiento\": \"2026-12-31\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Pagar factura desde una cuenta",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/facturas/1/pagar",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v2",
+                "facturas",
+                "1",
+                "pagar"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cuentaId\": 1\n}"
+            }
+          }
         }
       ]
     },

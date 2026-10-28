@@ -62,7 +62,7 @@ describe("handleSqlRequest — curso gate", () => {
     authenticateMock.mockResolvedValue({ ok: true, apiKeyId: "k", label: "c2", curso: 2 });
     const pool = fakePool();
 
-    const res = await handleSqlRequest(req({ sql: "SELECT * FROM facturas" }), {
+    const res = await handleSqlRequest(req({ sql: "SELECT * FROM pagos" }), {
       expectedType: "select",
       getPool: () => pool as never,
       curso: 2,
