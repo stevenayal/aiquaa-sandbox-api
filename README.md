@@ -448,7 +448,7 @@ schema Postgres separado**, `qa_training_v2`, con sus propias tablas y su propio
 | 1 | Cuentas Bancarias | `cuentas`, `movimientos` |
 | 2 | Tarjetas de Crédito/Débito | `tarjetas` |
 | 3 | Préstamos | `prestamos`, `cuotas_prestamo` |
-| 4 | Transferencias y Pagos | `beneficiarios`, `transferencias` |
+| 4 | Transferencias y Pagos | `beneficiarios`, `transferencias`, `facturas` |
 | 5 | Ahorros y Depósitos | `ahorros`, `depositos` |
 | — | Soporte (dueño de todo lo demás) | `usuarios` |
 
@@ -560,6 +560,8 @@ transacción con `SELECT ... FOR UPDATE`.
 | 4 | `GET/POST /api/v2/beneficiarios`, `GET/PUT/DELETE /api/v2/beneficiarios/{id}` | CRUD de beneficiarios (`UNIQUE (usuario_id, numero_cuenta)` entre los activos → `409`; una cuenta dada de baja se puede volver a agendar) |
 | 4 | `GET/POST /api/v2/transferencias`, `GET /api/v2/transferencias/{id}` | Transferencia interna (`cuentaDestinoId`) o externa (`beneficiarioId`) — exactamente uno de los dos; debita, acredita y escribe los movimientos |
 | 4 | `POST /api/v2/transferencias/{id}/anular` | Contraasiento: revierte saldos y deja la transferencia en `anulada` (no la borra) |
+| 4 | `GET/POST /api/v2/facturas`, `GET /api/v2/facturas/{id}` | Facturas de servicios del cliente; nacen `pendiente` |
+| 4 | `POST /api/v2/facturas/{id}/pagar` | Debita la cuenta (`cuentaId`, PYG y del mismo titular) y deja la factura `pagada`; `409` si ya está pagada o no hay saldo |
 | 5 | `GET/POST /api/v2/ahorros`, `GET/PUT/DELETE /api/v2/ahorros/{id}` | CRUD de planes de ahorro (incluye `falta_para_meta` calculado) |
 | 5 | `POST /api/v2/ahorros/{id}/aportar` | Debita la cuenta y suma al acumulado; `completado` al alcanzar la meta |
 | 5 | `GET/POST /api/v2/depositos`, `GET /api/v2/depositos/{id}` | Plazo fijo: constituirlo debita la cuenta; devuelve `interes_proyectado` y `dias_restantes` |
@@ -601,6 +603,7 @@ contra él.
 | `cuotas_prestamo` | `id, prestamo_id, numero_cuota, monto, fecha_vencimiento, estado, fecha_pago, created_at` | 3 |
 | `beneficiarios` | `id, usuario_id, nombre, banco, numero_cuenta, alias, activo, created_at` | 4 |
 | `transferencias` | `id, cuenta_origen_id, cuenta_destino_id, beneficiario_id, monto, moneda, concepto, referencia, estado, activo, created_at` | 4 |
+| `facturas` | `id, usuario_id, proveedor, numero_factura, monto, fecha_vencimiento, estado, cuenta_pago_id, pagada_at, activo, created_at` | 4 |
 | `ahorros` | `id, usuario_id, cuenta_id, nombre_meta, meta_monto, aporte_mensual, saldo_acumulado, tasa_anual, estado, activo, created_at` | 5 |
 | `depositos` | `id, usuario_id, cuenta_id, monto, tasa_anual, plazo_dias, fecha_inicio, fecha_vencimiento, interes_generado, estado, activo, created_at` | 5 |
 

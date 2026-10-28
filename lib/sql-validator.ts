@@ -41,6 +41,7 @@ export const QA_TRAINING_V2_TABLES = [
   "cuotas_prestamo",
   "beneficiarios",
   "transferencias",
+  "facturas",
   "ahorros",
   "depositos",
 ] as const;

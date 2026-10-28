@@ -155,12 +155,12 @@ describe("validateSql — UPDATE endpoint", () => {
   });
 
   it("rejects a v1-only table on a v2 request", () => {
-    const result = validateSql("SELECT * FROM facturas WHERE id = $1", [1], {
+    const result = validateSql("SELECT * FROM pagos WHERE id = $1", [1], {
       expectedType: "select",
       ...v2,
     });
     expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.message).toMatch(/facturas/);
+    if (!result.ok) expect(result.message).toMatch(/pagos/);
   });
 
   it("rejects an explicitly schema-qualified qa_training table on a v2 request", () => {

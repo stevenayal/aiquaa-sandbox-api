@@ -17,7 +17,7 @@
 -- Grupo 1  Cuentas Bancarias           -> cuentas, movimientos
 -- Grupo 2  Tarjetas de Credito/Debito  -> tarjetas
 -- Grupo 3  Prestamos                   -> prestamos, cuotas_prestamo
--- Grupo 4  Transferencias y Pagos      -> beneficiarios, transferencias
+-- Grupo 4  Transferencias y Pagos      -> beneficiarios, transferencias, facturas
 -- Grupo 5  Ahorros y Depositos         -> ahorros, depositos
 -- (soporte, sin grupo)                 -> usuarios
 -- =============================================================================
@@ -69,7 +69,7 @@ CREATE TABLE IF NOT EXISTS qa_training_v2.movimientos (
   saldo_posterior  numeric(14, 2) NOT NULL,
   referencia_tipo  text NOT NULL DEFAULT 'manual'
                    CHECK (referencia_tipo IN (
-                     'manual', 'transferencia', 'prestamo', 'ahorro', 'deposito', 'tarjeta'
+                     'manual', 'transferencia', 'prestamo', 'ahorro', 'deposito', 'tarjeta', 'factura'
                    )),
   referencia_id    bigint,
   descripcion      text,
@@ -176,6 +176,40 @@ CREATE TABLE IF NOT EXISTS qa_training_v2.transferencias (
     cuenta_destino_id IS NULL OR cuenta_destino_id <> cuenta_origen_id
   )
 );
+
+-- Grupo 4: facturas de servicios del cliente. Pagar una factura debita la
+-- cuenta elegida (movimiento con referencia_tipo 'factura') y la deja en
+-- 'pagada'; cuenta_pago_id y pagada_at quedan como comprobante. A diferencia
+-- de /api/v1/facturas (curso 1), el pago mueve saldo.
+CREATE TABLE IF NOT EXISTS qa_training_v2.facturas (
+  id                 bigserial PRIMARY KEY,
+  usuario_id         bigint NOT NULL REFERENCES qa_training_v2.usuarios (id),
+  proveedor          text NOT NULL
+                     CHECK (proveedor IN ('ANDE', 'ESSAP', 'COPACO', 'Tigo', 'Personal')),
+  numero_factura     text NOT NULL,
+  monto              numeric(14, 2) NOT NULL CHECK (monto > 0),
+  fecha_vencimiento  date NOT NULL,
+  estado             text NOT NULL DEFAULT 'pendiente'
+                     CHECK (estado IN ('pendiente', 'pagada', 'vencida')),
+  cuenta_pago_id     bigint REFERENCES qa_training_v2.cuentas (id),
+  pagada_at          timestamptz,
+  activo             boolean NOT NULL DEFAULT true,
+  created_at         timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT facturas_pago_consistente CHECK (
+    (estado = 'pagada') = (cuenta_pago_id IS NOT NULL AND pagada_at IS NOT NULL)
+  )
+);
+
+CREATE INDEX IF NOT EXISTS facturas_usuario_id_idx ON qa_training_v2.facturas (usuario_id);
+
+-- Migracion para bases creadas antes de facturas: el CHECK original de
+-- movimientos.referencia_tipo no admitia 'factura'.
+ALTER TABLE qa_training_v2.movimientos
+  DROP CONSTRAINT IF EXISTS movimientos_referencia_tipo_check;
+ALTER TABLE qa_training_v2.movimientos
+  ADD CONSTRAINT movimientos_referencia_tipo_check CHECK (referencia_tipo IN (
+    'manual', 'transferencia', 'prestamo', 'ahorro', 'deposito', 'tarjeta', 'factura'
+  ));
 
 -- Grupo 5: ahorro programado (meta + aportes) y deposito a plazo fijo.
 CREATE TABLE IF NOT EXISTS qa_training_v2.ahorros (

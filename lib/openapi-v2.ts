@@ -99,7 +99,7 @@ export const openApiSpecV2 = {
     { name: G1, description: "Cuentas, saldos, estados y movimientos." },
     { name: G2, description: "Tarjetas: límites, disponible, estado y vencimiento." },
     { name: G3, description: "Préstamos: aprobación, cuotas, saldo y vencimientos." },
-    { name: G4, description: "Beneficiarios y transferencias (importes y estados)." },
+    { name: G4, description: "Beneficiarios, transferencias y pago de facturas (importes y estados)." },
     { name: G5, description: "Ahorro programado y depósitos a plazo (tasas, plazos, vencimientos)." },
   ],
   components: {
@@ -306,6 +306,22 @@ export const openApiSpecV2 = {
             type: "string",
             enum: ["pendiente", "completada", "rechazada", "anulada"],
           },
+          activo: { type: "boolean" },
+          created_at: { type: "string", format: "date-time" },
+        },
+      },
+      Factura: {
+        type: "object",
+        properties: {
+          id: { type: "integer" },
+          usuario_id: { type: "integer" },
+          proveedor: { type: "string", enum: ["ANDE", "ESSAP", "COPACO", "Tigo", "Personal"] },
+          numero_factura: { type: "string" },
+          monto: { type: "string" },
+          fecha_vencimiento: { type: "string", format: "date" },
+          estado: { type: "string", enum: ["pendiente", "pagada", "vencida"] },
+          cuenta_pago_id: { type: "integer", nullable: true, description: "Cuenta debitada al pagar." },
+          pagada_at: { type: "string", format: "date-time", nullable: true },
           activo: { type: "boolean" },
           created_at: { type: "string", format: "date-time" },
         },
@@ -1250,6 +1266,93 @@ export const openApiSpecV2 = {
     },
 
     // --- Grupo 5: Ahorros y Depósitos ---
+    "/api/v2/facturas": {
+      get: {
+        tags: [G4],
+        summary: "Listar facturas (Grupo 4)",
+        parameters: [
+          usuarioIdQuery,
+          {
+            name: "estado",
+            in: "query",
+            required: false,
+            schema: { type: "string", enum: ["pendiente", "pagada", "vencida"] },
+          },
+        ],
+        responses: {
+          "200": listOf("Factura", "Listado de facturas"),
+          ...validationError,
+          ...authRateLimitErrors,
+        },
+      },
+      post: {
+        tags: [G4],
+        summary: "Registrar factura pendiente (Grupo 4)",
+        description: "La factura nace `pendiente`; solo POST /facturas/{id}/pagar la pasa a `pagada`.",
+        requestBody: body(["usuarioId", "proveedor", "numeroFactura", "monto", "fechaVencimiento"], {
+          usuarioId: { type: "integer" },
+          proveedor: { type: "string", enum: ["ANDE", "ESSAP", "COPACO", "Tigo", "Personal"] },
+          numeroFactura: { type: "string" },
+          monto: { type: "number", exclusiveMinimum: 0 },
+          fechaVencimiento: { type: "string", format: "date" },
+        }),
+        responses: {
+          "201": dataOf("Factura", "Factura registrada"),
+          ...validationError,
+          ...authRateLimitErrors,
+        },
+      },
+    },
+    "/api/v2/facturas/{id}": {
+      get: {
+        tags: [G4],
+        summary: "Obtener factura por id (Grupo 4)",
+        parameters: [idPath],
+        responses: {
+          "200": dataOf("Factura", "Factura encontrada"),
+          ...notFoundError,
+          ...validationError,
+          ...authRateLimitErrors,
+        },
+      },
+    },
+    "/api/v2/facturas/{id}/pagar": {
+      post: {
+        tags: [G4],
+        summary: "Pagar factura desde una cuenta (Grupo 4)",
+        description:
+          "Debita el monto de la cuenta (movimiento `referencia_tipo = 'factura'`) y deja la factura " +
+          "en `pagada`. 409 si ya está pagada, si la cuenta no es del titular, no está activa, no es " +
+          "PYG o no tiene saldo suficiente.",
+        parameters: [idPath],
+        requestBody: body(["cuentaId"], { cuentaId: { type: "integer" } }),
+        responses: {
+          "200": {
+            description: "Factura pagada y cuenta debitada",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    data: {
+                      type: "object",
+                      properties: {
+                        factura: { $ref: "#/components/schemas/Factura" },
+                        cuenta: { $ref: "#/components/schemas/Cuenta" },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          ...notFoundError,
+          ...conflictError,
+          ...validationError,
+          ...authRateLimitErrors,
+        },
+      },
+    },
     "/api/v2/ahorros": {
       get: {
         tags: [G5],
